@@ -16,6 +16,9 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Eye,
+  EyeOff,
+  Calendar,
 } from "lucide-react";
 import { LanguageProvider, useLanguage } from "@/i18n/LanguageContext";
 import LanguageToggle from "./LanguageToggle";
@@ -41,6 +44,7 @@ interface VideoItem extends DriveFile {
   youtubeId?: string;
   error?: string;
   progress?: number; // 0–100 for ring
+  uploadedAt?: string; // ISO date string
 }
 
 export default function AutomationPage({ accessKey }: { accessKey: string }) {
@@ -102,6 +106,7 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
   const [bulkCurrent, setBulkCurrent] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [hideUploaded, setHideUploaded] = useState(false);
   const abortRef = useRef(false);
 
   function formatSize(bytes: number): string {
@@ -234,6 +239,7 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                 progress: 100,
                 youtubeUrl: data.url,
                 youtubeId: data.videoId,
+                uploadedAt: new Date().toISOString(),
               }
             : v
         )
@@ -482,9 +488,9 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
               </div>
             </div>
 
-            {/* Video List — thumbnail left, metadata right */}
+            {/* Pending Videos — full list layout */}
             <div className="space-y-4">
-              {videos.map((video) => (
+              {videos.filter((v) => v.status !== "done").map((video) => (
                 <div
                   key={video.id}
                   className="rounded-2xl bg-white shadow-md border border-gray-100 overflow-hidden transition-all hover:shadow-lg"
@@ -518,7 +524,6 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                           </p>
                         </div>
 
-                        {/* Action Buttons */}
                         {video.status === "ready" && (
                           <button
                             onClick={() => handleGenerateSeo(video.id)}
@@ -539,7 +544,6 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                         {video.status === "review" && (
                           <button
                             onClick={() => handleUpload(video.id)}
-                            disabled={video.status !== "review"}
                             className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-blue px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90"
                           >
                             <Upload className="h-3.5 w-3.5" />
@@ -552,18 +556,6 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                             <Loader2 className="h-4 w-4 animate-spin" />
                             {t("auto.uploading")}
                           </div>
-                        )}
-
-                        {video.status === "done" && video.youtubeUrl && (
-                          <a
-                            href={video.youtubeUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-teal/20 px-4 py-2.5 text-sm font-medium text-epic-purple transition-all hover:bg-epic-teal/30"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" />
-                            {t("auto.viewOnYt")}
-                          </a>
                         )}
 
                         {video.status === "error" && (
@@ -580,11 +572,10 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                       </div>
                     </div>
 
-                    {/* Right: Metadata (always visible when available) */}
-                    {(video.status === "review" || video.status === "done" || video.status === "uploading") && video.title && video.description && (
+                    {/* Right: Metadata */}
+                    {(video.status === "review" || video.status === "uploading") && video.title && video.description && (
                       <div className="flex-1 border-t lg:border-t-0 lg:border-l border-gray-100">
                         <div className="p-5 space-y-4">
-                          {/* Editable Title */}
                           <div>
                             <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1">
                               {t("auto.editTitle")}
@@ -597,8 +588,6 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-epic-purple font-roboto focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue disabled:bg-gray-50 disabled:text-epic-purple/60"
                             />
                           </div>
-
-                          {/* Editable Description */}
                           <div>
                             <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1">
                               {t("auto.editDescription")}
@@ -611,32 +600,19 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-epic-purple/80 font-georgia leading-relaxed focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue resize-y disabled:bg-gray-50 disabled:text-epic-purple/60"
                             />
                           </div>
-
-                          {/* Tags */}
                           {video.tags && video.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
                               {video.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="rounded-full bg-epic-blue/10 px-2.5 py-0.5 text-xs font-medium text-epic-blue"
-                                >
+                                <span key={tag} className="rounded-full bg-epic-blue/10 px-2.5 py-0.5 text-xs font-medium text-epic-blue">
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           )}
-
-                          {/* SEO Strength + Badges */}
                           <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
-                            <SeoStrengthMeter
-                              title={video.title}
-                              description={video.description}
-                              tags={video.tags ?? []}
-                            />
+                            <SeoStrengthMeter title={video.title} description={video.description} tags={video.tags ?? []} />
                             <div className="flex items-center gap-2 text-xs text-epic-purple/50">
-                              <span className="rounded-full bg-epic-yellow/20 px-2 py-0.5 font-medium text-epic-purple">
-                                Education
-                              </span>
+                              <span className="rounded-full bg-epic-yellow/20 px-2 py-0.5 font-medium text-epic-purple">Education</span>
                               <span>Unlisted</span>
                               <span>Made for Kids</span>
                             </div>
@@ -648,6 +624,88 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                 </div>
               ))}
             </div>
+
+            {/* Uploaded Videos — compact, grouped by date */}
+            {doneCount > 0 && (
+              <div className="space-y-4 mt-8">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-epic-purple font-roboto flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-epic-teal" />
+                    Uploaded ({doneCount})
+                  </h3>
+                  <button
+                    onClick={() => setHideUploaded(!hideUploaded)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium text-epic-purple/60 transition-all hover:bg-gray-50"
+                  >
+                    {hideUploaded ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    {hideUploaded ? "Show Uploaded" : "Hide Uploaded"}
+                  </button>
+                </div>
+
+                {!hideUploaded && (() => {
+                  const doneVideos = videos.filter((v) => v.status === "done");
+                  // Group by date
+                  const grouped: Record<string, VideoItem[]> = {};
+                  for (const v of doneVideos) {
+                    const dateKey = v.uploadedAt
+                      ? new Date(v.uploadedAt).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+                      : "Unknown Date";
+                    if (!grouped[dateKey]) grouped[dateKey] = [];
+                    grouped[dateKey].push(v);
+                  }
+
+                  return Object.entries(grouped).map(([date, vids]) => (
+                    <div key={date} className="space-y-2">
+                      <div className="flex items-center gap-2 text-sm font-medium text-epic-purple/50">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {date}
+                      </div>
+                      <div className="rounded-2xl bg-white shadow-sm border border-gray-100 divide-y divide-gray-100">
+                        {vids.map((video) => (
+                          <div key={video.id} className="flex items-center gap-4 px-5 py-3">
+                            {/* Small thumbnail */}
+                            <div className="relative w-16 h-9 rounded-lg overflow-hidden bg-gray-100 flex-shrink-0">
+                              {video.thumbnail ? (
+                                <Image src={video.thumbnail} alt={video.name} fill className="object-cover" sizes="64px" />
+                              ) : (
+                                <div className="absolute inset-0 flex items-center justify-center bg-epic-blue/5">
+                                  <Play className="h-3 w-3 text-epic-purple/20" />
+                                </div>
+                              )}
+                            </div>
+                            {/* Title */}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-epic-purple truncate">
+                                {video.title || video.name}
+                              </p>
+                              <p className="text-xs text-epic-purple/40 font-georgia">
+                                {video.uploadedAt && new Date(video.uploadedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                {" · "}{formatSize(video.size)}
+                              </p>
+                            </div>
+                            {/* Status + Link */}
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                              <CheckCircle2 className="h-4 w-4 text-epic-teal" />
+                              {video.youtubeUrl && (
+                                <a
+                                  href={video.youtubeUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-epic-teal/10 px-3 py-1.5 text-xs font-medium text-epic-purple transition-all hover:bg-epic-teal/20"
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  View on YouTube
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
           </div>
         )}
 

@@ -68,6 +68,24 @@ interface WordEntry {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Default Kitten Ninja — always available as fallback                 */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_KITTEN_NINJA: CharacterProfile = {
+  id: "kitten-ninja",
+  name: "Kitten Ninja",
+  visualDna: `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim, a red/coral ninja mask on his face, and a red/coral scarf around his neck.
+EYES: MUST be two small solid black dots ONLY. No eyebrows, no eyelashes, no white sclera, no blinking.
+MOUTH: MUST be a simple open happy "u" shape. It is a static black outline. No tongue, no teeth, no movement.
+PAWS: Round pink pads with NO claws.
+STYLE: 2D clean-line cartoon. No realistic fur, no shading gradients, no 3D rendering. Flat colors only.
+PERSONALITY: Brave but clumsy. Tries hard to be cool but always has a small comedic fail.
+BRANDING: Epic Original. Book series by Colleen AF Venable and Stephanie Yue.
+SILENT RULE: Kitten Ninja NEVER speaks. No dialogue, no speech bubbles. Only the offscreen narrator has lines.`,
+  createdAt: Date.now(),
+};
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -91,8 +109,8 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
 
   /* ---- State ---- */
 
-  // Step 1: Characters
-  const [characters, setCharacters] = useState<CharacterProfile[]>([]);
+  // Step 1: Characters (start with hardcoded Kitten Ninja so it's always visible)
+  const [characters, setCharacters] = useState<CharacterProfile[]>([DEFAULT_KITTEN_NINJA]);
   const [selectedCharId, setSelectedCharId] = useState("kitten-ninja");
   const [showNewChar, setShowNewChar] = useState(false);
   const [newCharName, setNewCharName] = useState("");
@@ -147,12 +165,19 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
       }).then((r) => r.json()),
     ])
       .then(([charData, wordData, scriptData, crossrefData]) => {
-        if (charData.characters) setCharacters(charData.characters);
+        if (charData.characters && charData.characters.length > 0) {
+          // Use DB characters, but ensure Kitten Ninja is always present
+          const dbChars = charData.characters as CharacterProfile[];
+          const hasKitten = dbChars.some((c: CharacterProfile) => c.id === "kitten-ninja");
+          setCharacters(hasKitten ? dbChars : [DEFAULT_KITTEN_NINJA, ...dbChars]);
+        }
         if (wordData.words) setWords(wordData.words);
         if (scriptData.scripts) setScripts(scriptData.scripts);
         if (crossrefData.uploaded) setUploadedWords(crossrefData.uploaded);
       })
-      .catch(() => {})
+      .catch(() => {
+        // API failed — keep the hardcoded default
+      })
       .finally(() => {
         setLoadingChars(false);
         setLoadingWords(false);

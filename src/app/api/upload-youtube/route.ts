@@ -92,17 +92,27 @@ export async function POST(request: NextRequest) {
           uploadedFolderId = newFolder.data.id!;
         }
 
-        console.log(`Moving file ${driveFileId} to UPLOADED folder ${uploadedFolderId}`);
+        console.log(`Copying file ${driveFileId} to UPLOADED folder ${uploadedFolderId}`);
 
-        // Move the file: remove from source folder, add to UPLOADED folder
-        const moveResult = await moveDrive.files.update({
+        // Get original file name
+        const originalFile = await moveDrive.files.get({
           fileId: driveFileId,
-          addParents: uploadedFolderId,
-          removeParents: sourceFolderId,
-          fields: "id,parents",
+          fields: "name",
         });
 
-        console.log(`File moved successfully. New parents:`, moveResult.data.parents);
+        // Copy file to UPLOADED folder
+        // Note: Cannot delete/move originals owned by another user (e.g. carlos@getepic.com)
+        // so we copy instead and track upload status in the database
+        await moveDrive.files.copy({
+          fileId: driveFileId,
+          requestBody: {
+            name: originalFile.data.name!,
+            parents: [uploadedFolderId],
+          },
+          fields: "id",
+        });
+
+        console.log(`File copied to UPLOADED folder successfully.`);
       } catch (moveErr: unknown) {
         const msg = moveErr instanceof Error ? moveErr.message : "Unknown";
         const details = (moveErr as { response?: { data?: unknown } })?.response?.data;

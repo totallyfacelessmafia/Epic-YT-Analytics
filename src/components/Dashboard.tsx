@@ -11,6 +11,9 @@ import TopVideos from "./TopVideos";
 import UploadFrequency from "./UploadFrequency";
 import SubscribersChart from "./SubscribersChart";
 import TopSearchTerms from "./TopSearchTerms";
+import PostingHeatmap from "./PostingHeatmap";
+import CtrTable from "./CtrTable";
+import RetentionChart from "./RetentionChart";
 
 type ContentFilter = "all" | "shorts" | "long";
 
@@ -41,6 +44,33 @@ interface SearchTerm {
   watchTime: number;
 }
 
+interface CtrVideo {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  impressions: number;
+  ctr: number;
+  views: number;
+  isShort: boolean;
+}
+
+interface RetentionVideo {
+  videoId: string;
+  title: string;
+  avgViewDuration: number;
+  videoDuration: number;
+  retentionPct: number;
+  views: number;
+  isShort: boolean;
+}
+
+interface HeatmapCell {
+  hour: number;
+  day: number;
+  avgViews: number;
+  count: number;
+}
+
 interface AnalyticsData {
   totals: { views: number; watchTime: number; subscribers: number };
   changes: { views: number; watchTime: number; subscribers: number };
@@ -49,6 +79,9 @@ interface AnalyticsData {
   uploadCounts: UploadCounts;
   unlistedCounts: UnlistedCounts;
   searchTerms: SearchTerm[];
+  ctrData: CtrVideo[];
+  retentionData: RetentionVideo[];
+  postingHeatmap: HeatmapCell[];
 }
 
 function formatNumber(n: number): string {
@@ -221,6 +254,15 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             />
             <SubscribersChart data={data.dailyData} />
             <TopVideos videos={data.topVideos} />
+            {data.ctrData && data.ctrData.length > 0 && (
+              <CtrTable data={data.ctrData} />
+            )}
+            {data.retentionData && data.retentionData.length > 0 && (
+              <RetentionChart data={data.retentionData} />
+            )}
+            {data.postingHeatmap && data.postingHeatmap.length > 0 && (
+              <PostingHeatmap data={data.postingHeatmap} />
+            )}
             <TopSearchTerms terms={data.searchTerms} />
             <UploadFrequency counts={data.uploadCounts} unlistedCounts={data.unlistedCounts} />
           </div>

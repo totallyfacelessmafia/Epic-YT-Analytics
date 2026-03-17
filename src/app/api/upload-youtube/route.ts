@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
-import { updateMetadataUpload } from "@/lib/db";
+// DB import is dynamic to avoid native module issues on Vercel
 
 export async function POST(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
 
     // Update database with upload info
     try {
+      const { updateMetadataUpload } = await import("@/lib/db");
       updateMetadataUpload(driveFileId, youtubeUrl, uploadRes.data.id!);
     } catch (dbErr) {
       console.error("DB update error (non-fatal):", dbErr);

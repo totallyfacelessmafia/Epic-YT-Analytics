@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createMetadata } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -93,6 +92,7 @@ Return ONLY valid JSON in this exact format:
     // Save to database
     if (driveFileId) {
       try {
+        const { createMetadata } = await import("@/lib/db");
         createMetadata({
           drive_file_id: driveFileId,
           filename,

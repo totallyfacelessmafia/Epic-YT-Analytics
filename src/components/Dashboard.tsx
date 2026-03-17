@@ -79,6 +79,7 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
   const [error, setError] = useState<string | null>(null);
   const [contentFilter, setContentFilter] = useState<ContentFilter>("all");
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchData = useCallback(
     (filter: ContentFilter) => {
@@ -91,7 +92,7 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
           if (!res.ok) throw new Error(t("error.fetchFailed"));
           return res.json();
         })
-        .then(setData)
+        .then((d) => { setData(d); setLastUpdated(new Date()); })
         .catch((err) => setError(err.message))
         .finally(() => setLoading(false));
     },
@@ -163,6 +164,12 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             <div className="flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 rounded-full bg-epic-blue animate-pulse" />
               <span className="text-xs text-epic-purple/50 font-roboto">{t("header.live")}</span>
+              {lastUpdated && (
+                <span className="text-xs text-epic-purple/40 font-roboto ml-1">
+                  · {lastUpdated.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{" "}
+                  {lastUpdated.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
             </div>
           </div>
         </div>

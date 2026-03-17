@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const startDate60 = start60.toISOString().split("T")[0];
 
     // Fetch current period daily data, previous period totals, and top videos
-    const [currentPeriod, previousPeriod, topVideosReport] = await Promise.all([
+    const [currentPeriod, previousPeriod, topVideosReport, searchTermsReport] = await Promise.all([
       youtubeAnalytics.reports.query({
         ids: `channel==${channelId}`,
         startDate: startDate30,
@@ -79,6 +79,16 @@ export async function GET(request: NextRequest) {
         endDate: endDate,
         metrics: "views,averageViewDuration",
         dimensions: "video",
+        sort: "-views",
+        maxResults: 20,
+      }),
+      youtubeAnalytics.reports.query({
+        ids: `channel==${channelId}`,
+        startDate: startDate30,
+        endDate: endDate,
+        metrics: "views,estimatedMinutesWatched",
+        dimensions: "insightTrafficSourceDetail",
+        filters: "insightTrafficSourceType==YT_SEARCH",
         sort: "-views",
         maxResults: 20,
       }),
@@ -255,6 +265,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Parse top search terms
+    const searchTerms = (searchTermsReport.data.rows ?? []).map((row) => ({
+      term: row[0] as string,
+      views: row[1] as number,
+      watchTime: row[2] as number,
+    }));
+
     return NextResponse.json({
       totals: currentTotals,
       changes: {
@@ -266,6 +283,7 @@ export async function GET(request: NextRequest) {
       topVideos: filteredTopVideos.slice(0, 5),
       uploadCounts,
       unlistedCounts,
+      searchTerms,
     });
   } catch (error: unknown) {
     console.error("YouTube API error:", error);

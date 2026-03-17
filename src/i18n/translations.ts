@@ -41,6 +41,11 @@ const translations: Record<string, Record<Locale, string>> = {
   "topVideos.long": { en: "Long", zh: "长视频" },
   "topVideos.empty": { en: "No videos found for this filter.", zh: "未找到符合筛选条件的视频。" },
 
+  // Search Terms
+  "search.title": { en: "Top Search Terms", zh: "热门搜索词" },
+  "search.subtitle": { en: "Keywords driving traffic (last 30 days)", zh: "驱动流量的关键词（过去30天）" },
+  "search.views": { en: "views", zh: "次观看" },
+
   // Upload Frequency
   "upload.title": { en: "Upload Frequency", zh: "上传频率" },
   "upload.today": { en: "Today", zh: "今天" },

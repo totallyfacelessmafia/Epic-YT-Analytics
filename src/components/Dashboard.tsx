@@ -10,6 +10,7 @@ import AnalyticsChart from "./AnalyticsChart";
 import TopVideos from "./TopVideos";
 import UploadFrequency from "./UploadFrequency";
 import SubscribersChart from "./SubscribersChart";
+import TopSearchTerms from "./TopSearchTerms";
 
 type ContentFilter = "all" | "shorts" | "long";
 
@@ -34,6 +35,12 @@ interface UnlistedCounts {
   lastWeek: number;
 }
 
+interface SearchTerm {
+  term: string;
+  views: number;
+  watchTime: number;
+}
+
 interface AnalyticsData {
   totals: { views: number; watchTime: number; subscribers: number };
   changes: { views: number; watchTime: number; subscribers: number };
@@ -41,6 +48,7 @@ interface AnalyticsData {
   topVideos: TopVideo[];
   uploadCounts: UploadCounts;
   unlistedCounts: UnlistedCounts;
+  searchTerms: SearchTerm[];
 }
 
 function formatNumber(n: number): string {
@@ -206,6 +214,7 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             />
             <SubscribersChart data={data.dailyData} />
             <TopVideos videos={data.topVideos} />
+            <TopSearchTerms terms={data.searchTerms} />
             <UploadFrequency counts={data.uploadCounts} unlistedCounts={data.unlistedCounts} />
           </div>
         )}

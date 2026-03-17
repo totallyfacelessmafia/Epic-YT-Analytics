@@ -61,8 +61,16 @@ export async function POST(request: NextRequest) {
     // Move the file to an "UPLOADED" subfolder in the source Drive folder
     if (sourceFolderId) {
       try {
+        // Create a fresh Drive client for the move operation
+        const moveAuth = new google.auth.OAuth2(
+          process.env.GOOGLE_CLIENT_ID,
+          process.env.GOOGLE_CLIENT_SECRET
+        );
+        moveAuth.setCredentials({ refresh_token: process.env.GOOGLE_REFRESH_TOKEN });
+        const moveDrive = google.drive({ version: "v3", auth: moveAuth });
+
         // Check if "UPLOADED" folder already exists
-        const folderSearch = await drive.files.list({
+        const folderSearch = await moveDrive.files.list({
           q: `'${sourceFolderId}' in parents and name='UPLOADED' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
           fields: "files(id)",
         });
@@ -73,7 +81,7 @@ export async function POST(request: NextRequest) {
           uploadedFolderId = folderSearch.data.files[0].id!;
         } else {
           // Create the "UPLOADED" folder
-          const newFolder = await drive.files.create({
+          const newFolder = await moveDrive.files.create({
             requestBody: {
               name: "UPLOADED",
               mimeType: "application/vnd.google-apps.folder",
@@ -84,16 +92,21 @@ export async function POST(request: NextRequest) {
           uploadedFolderId = newFolder.data.id!;
         }
 
+        console.log(`Moving file ${driveFileId} to UPLOADED folder ${uploadedFolderId}`);
+
         // Move the file: remove from source folder, add to UPLOADED folder
-        await drive.files.update({
+        const moveResult = await moveDrive.files.update({
           fileId: driveFileId,
           addParents: uploadedFolderId,
           removeParents: sourceFolderId,
-          fields: "id",
+          fields: "id,parents",
         });
-      } catch (moveErr) {
-        // Log but don't fail the upload if the move fails
-        console.error("Failed to move file to UPLOADED folder:", moveErr);
+
+        console.log(`File moved successfully. New parents:`, moveResult.data.parents);
+      } catch (moveErr: unknown) {
+        const msg = moveErr instanceof Error ? moveErr.message : "Unknown";
+        const details = (moveErr as { response?: { data?: unknown } })?.response?.data;
+        console.error("Failed to move file to UPLOADED folder:", msg, details);
       }
     }
 

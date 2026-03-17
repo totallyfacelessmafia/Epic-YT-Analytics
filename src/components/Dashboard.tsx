@@ -140,27 +140,13 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
     setContentFilter(filter);
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = () => {
     setPdfLoading(true);
-    try {
-      const res = await fetch(
-        `/api/generate-pdf?key=${encodeURIComponent(accessKey)}`
-      );
-      if (!res.ok) throw new Error("Failed to generate report");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Epic-Channel-Report-${new Date().toISOString().split("T")[0]}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      alert(t("error.pdfFailed"));
-    } finally {
+    // Use browser print dialog — works everywhere, no Puppeteer needed
+    setTimeout(() => {
+      window.print();
       setPdfLoading(false);
-    }
+    }, 300);
   };
 
   function formatWatchTime(minutes: number): string {

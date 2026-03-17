@@ -17,3 +17,28 @@ body {
   color: #3F1E56;
   font-family: "Roboto", sans-serif;
 }
+
+/* Print styles for PDF report download */
+@media print {
+  /* Hide sidebar, header buttons, footer */
+  aside, button, footer, .no-print {
+    display: none !important;
+  }
+  /* Remove sidebar margin */
+  main {
+    margin-left: 0 !important;
+  }
+  /* Clean white background */
+  body, html {
+    background: white !important;
+  }
+  /* Avoid page breaks inside cards */
+  .rounded-2xl {
+    break-inside: avoid;
+  }
+  /* Add report title */
+  @page {
+    size: A4;
+    margin: 15mm;
+  }
+}

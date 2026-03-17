@@ -332,3 +332,60 @@ export function scriptExistsForWord(word: string): boolean {
   const row = getDb().prepare("SELECT id FROM scripts WHERE word = ? COLLATE NOCASE LIMIT 1").get(word);
   return !!row;
 }
+
+/** Get all words that have been uploaded to YouTube (for cross-referencing) */
+export function getUploadedWordsList(): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT DISTINCT LOWER(REPLACE(REPLACE(filename, '.mp4', ''), 'word_', '')) as word
+       FROM metadata_history WHERE status = 'uploaded'`
+    )
+    .all() as { word: string }[];
+  return rows.map((r) => r.word);
+}
+
+/** Get all words that have generated scripts */
+export function getScriptedWords(): string[] {
+  const rows = getDb()
+    .prepare("SELECT DISTINCT LOWER(word) as word FROM scripts")
+    .all() as { word: string }[];
+  return rows.map((r) => r.word);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sight Word Seeder                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Pre-seed Dolch & Fry kindergarten sight words (only adds new ones) */
+export function seedSightWords(): { added: number; duplicates: number } {
+  const DOLCH_FRY_KINDERGARTEN = [
+    // Dolch Pre-Primer
+    "a", "and", "away", "big", "blue", "can", "come", "down",
+    "find", "for", "funny", "go", "help", "here", "i", "in",
+    "is", "it", "jump", "little", "look", "make", "me", "my",
+    "not", "one", "play", "red", "run", "said", "see", "the",
+    "three", "to", "two", "up", "we", "where", "yellow", "you",
+    // Dolch Primer
+    "all", "am", "are", "at", "ate", "be", "black", "brown",
+    "but", "came", "did", "do", "eat", "four", "get", "good",
+    "have", "he", "into", "like", "must", "new", "no", "now",
+    "on", "our", "out", "please", "pretty", "ran", "ride",
+    "saw", "say", "she", "so", "soon", "that", "there", "they",
+    "this", "too", "under", "want", "was", "well", "went",
+    "what", "white", "who", "will", "with", "yes",
+    // Dolch First Grade
+    "after", "again", "an", "any", "ask", "as", "by", "could",
+    "every", "fly", "from", "give", "going", "had", "has", "her",
+    "him", "his", "how", "just", "know", "let", "live", "may",
+    "of", "old", "once", "open", "over", "put", "round", "some",
+    "stop", "take", "thank", "them", "then", "think", "walk",
+    "were", "when",
+    // Extra high-frequency words for kindergarten
+    "fast", "slow", "high", "low", "near", "far", "hard", "soft",
+    "hot", "cold", "push", "pull", "sit", "stand", "read", "write",
+    "sing", "dance", "draw", "cut", "grow", "fall", "tell", "show",
+    "happy", "sad", "mad", "glad", "kind", "nice", "brave", "love",
+  ];
+
+  return addWordsFromCsv(DOLCH_FRY_KINDERGARTEN);
+}

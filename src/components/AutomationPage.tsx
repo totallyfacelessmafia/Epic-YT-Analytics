@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useCallback, useRef } from "react";
+import { Suspense, useState, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
 import {
   FolderSearch,
@@ -142,6 +142,16 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
       setScanning(false);
     }
   }
+
+  // Auto-scan on page load since folder ID is pre-filled
+  const hasAutoScanned = useRef(false);
+  useEffect(() => {
+    if (folderId.trim() && !hasAutoScanned.current) {
+      hasAutoScanned.current = true;
+      handleScan();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function generateSeo(videoId: string): Promise<boolean> {
     setVideos((prev) =>

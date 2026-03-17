@@ -9,6 +9,9 @@ import {
   markWordPending,
   deleteWord,
   scriptExistsForWord,
+  seedSightWords,
+  getScriptedWords,
+  getUploadedWordsList,
 } from "@/lib/db";
 
 function auth(req: NextRequest) {
@@ -43,6 +46,19 @@ export async function POST(req: NextRequest) {
   if (!auth(req)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const body = await req.json();
+
+  // Seed Dolch/Fry kindergarten sight words
+  if (body.action === "seed") {
+    const result = seedSightWords();
+    return NextResponse.json(result);
+  }
+
+  // Get cross-reference data (scripted + uploaded words)
+  if (body.action === "crossref") {
+    const scripted = getScriptedWords();
+    const uploaded = getUploadedWordsList();
+    return NextResponse.json({ scripted, uploaded });
+  }
 
   // Check if a word already has a script (duplicate detection)
   if (body.action === "check") {

@@ -104,12 +104,18 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
   const [scripts, setScripts] = useState<GeneratedScript[]>([]);
   const [loadingScripts, setLoadingScripts] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState("");
+
+  // Cross-reference
+  const [uploadedWords, setUploadedWords] = useState<string[]>([]);
 
   // UI
   const [expandedScript, setExpandedScript] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(1);
+  const [seedResult, setSeedResult] = useState<{ added: number; duplicates: number } | null>(null);
 
   const selectedChar = characters.find((c) => c.id === selectedCharId) ?? characters[0];
   const pendingWords = words.filter((w) => w.status === "pending");
@@ -124,11 +130,17 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
       fetch(apiUrl("/api/characters")).then((r) => r.json()),
       fetch(apiUrl("/api/words")).then((r) => r.json()),
       fetch(apiUrl("/api/scripts")).then((r) => r.json()),
+      fetch(apiUrl("/api/words"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "crossref" }),
+      }).then((r) => r.json()),
     ])
-      .then(([charData, wordData, scriptData]) => {
+      .then(([charData, wordData, scriptData, crossrefData]) => {
         if (charData.characters) setCharacters(charData.characters);
         if (wordData.words) setWords(wordData.words);
         if (scriptData.scripts) setScripts(scriptData.scripts);
+        if (crossrefData.uploaded) setUploadedWords(crossrefData.uploaded);
       })
       .catch(() => {})
       .finally(() => {
@@ -265,21 +277,38 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
     [selectedWord, apiUrl]
   );
 
+  /* ---- Seed sight words ---- */
+
+  const seedSightWords = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl("/api/words"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "seed" }),
+      });
+      const data = await res.json();
+      setSeedResult(data);
+      setTimeout(() => setSeedResult(null), 5000);
+
+      // Reload words
+      const wordsRes = await fetch(apiUrl("/api/words"));
+      const wordsData = await wordsRes.json();
+      if (wordsData.words) setWords(wordsData.words);
+    } catch {}
+  }, [apiUrl]);
+
   /* ---- Step 3: Generate ---- */
 
-  const generateScript = useCallback(async () => {
-    if (!selectedWord || !selectedChar) return;
-
-    setGenerating(true);
-    setError("");
-    setCurrentStep(3);
+  /** Generate a single word and return the script (used by both single and batch) */
+  const generateOneWord = useCallback(async (word: string): Promise<GeneratedScript | null> => {
+    if (!selectedChar) return null;
 
     try {
       const res = await fetch(apiUrl("/api/generate-script"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          word: selectedWord,
+          word,
           characterName: selectedChar.name,
           visualDna: selectedChar.visualDna,
         }),
@@ -292,8 +321,8 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
 
       const data = await res.json();
       const script: GeneratedScript = {
-        id: `${selectedWord}-${Date.now()}`,
-        word: data.word || selectedWord,
+        id: `${word}-${Date.now()}`,
+        word: data.word || word,
         characterId: selectedChar.id,
         characterName: selectedChar.name,
         setting: data.setting || "Lavender Dojo",
@@ -317,9 +346,60 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
       await fetch(apiUrl("/api/words"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "produce", word: selectedWord, characterId: selectedChar.id }),
+        body: JSON.stringify({ action: "produce", word, characterId: selectedChar.id }),
       });
 
+      return script;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(`Failed on "${word}": ${msg}`);
+      return null;
+    }
+  }, [selectedChar, apiUrl]);
+
+  /** Batch generate all pending words */
+  const batchGenerateAll = useCallback(async () => {
+    if (!selectedChar || pendingWords.length === 0) return;
+
+    setBatchGenerating(true);
+    setError("");
+    setBatchProgress({ current: 0, total: pendingWords.length });
+    setCurrentStep(3);
+
+    const newScripts: GeneratedScript[] = [];
+
+    for (let i = 0; i < pendingWords.length; i++) {
+      setBatchProgress({ current: i + 1, total: pendingWords.length });
+      const word = pendingWords[i].word;
+      const script = await generateOneWord(word);
+
+      if (script) {
+        newScripts.push(script);
+        setScripts((prev) => [script, ...prev]);
+        setWords((prev) =>
+          prev.map((w) =>
+            w.word === word
+              ? { ...w, status: "produced", producedAt: Date.now(), characterId: selectedChar.id }
+              : w
+          )
+        );
+      }
+    }
+
+    setBatchGenerating(false);
+    if (newScripts.length > 0) setExpandedScript(newScripts[0].id);
+  }, [selectedChar, pendingWords, generateOneWord]);
+
+  const generateScript = useCallback(async () => {
+    if (!selectedWord || !selectedChar) return;
+
+    setGenerating(true);
+    setError("");
+    setCurrentStep(3);
+
+    const script = await generateOneWord(selectedWord);
+
+    if (script) {
       setScripts((prev) => [script, ...prev]);
       setWords((prev) =>
         prev.map((w) =>
@@ -330,13 +410,10 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
       );
       setExpandedScript(script.id);
       setSelectedWord(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      setError(`Failed: ${msg}`);
-    } finally {
-      setGenerating(false);
     }
-  }, [selectedWord, selectedChar, apiUrl]);
+
+    setGenerating(false);
+  }, [selectedWord, selectedChar, generateOneWord]);
 
   /* ---- Copy helpers ---- */
 
@@ -411,6 +488,11 @@ NEGATIVE PROMPT: ${s.negativePrompt}
     a.click();
     URL.revokeObjectURL(url);
   }, [scripts]);
+
+  /* ---- Word count helper ---- */
+  function wordCount(text: string): number {
+    return text.trim().split(/\s+/).filter(Boolean).length;
+  }
 
   /* ---- Loading ---- */
   const isLoading = loadingChars || loadingWords || loadingScripts;
@@ -667,6 +749,13 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                       </h2>
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={seedSightWords}
+                          className="flex items-center gap-1.5 text-xs font-medium text-epic-teal hover:text-epic-teal/80 transition-colors"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Seed Sight Words
+                        </button>
+                        <button
                           onClick={() => setShowCsvImport(!showCsvImport)}
                           className="flex items-center gap-1.5 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
                         >
@@ -707,6 +796,14 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                               </span>
                             )}
                           </div>
+                        </div>
+                      )}
+
+                      {/* Seed result */}
+                      {seedResult && (
+                        <div className="flex items-center gap-2 rounded-xl bg-epic-teal/10 border border-epic-teal/20 px-4 py-2.5 text-sm text-epic-teal font-medium">
+                          <CheckCircle2 className="w-4 h-4" />
+                          Loaded {seedResult.added} sight words ({seedResult.duplicates} already existed)
                         </div>
                       )}
 
@@ -788,17 +885,38 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                               No produced words yet. Generate some scripts!
                             </div>
                           ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {producedWords.map((w) => (
-                                <span
-                                  key={w.id}
-                                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-epic-teal/10 text-epic-teal border border-epic-teal/20"
-                                >
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  {w.word}
+                            <>
+                              <div className="flex flex-wrap gap-2">
+                                {producedWords.map((w) => {
+                                  const isUploaded = uploadedWords.includes(w.word);
+                                  return (
+                                    <span
+                                      key={w.id}
+                                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border ${
+                                        isUploaded
+                                          ? "bg-epic-blue/10 text-epic-blue border-epic-blue/20"
+                                          : "bg-epic-teal/10 text-epic-teal border-epic-teal/20"
+                                      }`}
+                                      title={isUploaded ? "Script + Uploaded to YouTube" : "Script generated (not yet uploaded)"}
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      {w.word}
+                                      {isUploaded && (
+                                        <span className="w-2 h-2 rounded-full bg-epic-blue" title="Uploaded" />
+                                      )}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center gap-4 pt-2 text-xs text-epic-purple/40">
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-epic-teal/60" /> Scripted
                                 </span>
-                              ))}
-                            </div>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-epic-blue" /> Uploaded to YouTube
+                                </span>
+                              </div>
+                            </>
                           )}
                         </div>
                       )}
@@ -956,23 +1074,45 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                       </div>
                     )}
 
-                    <button
-                      onClick={generateScript}
-                      disabled={generating || !selectedWord}
-                      className="w-full flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                    >
-                      {generating ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Generating script for &ldquo;{selectedWord}&rdquo;...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-5 h-5" />
-                          Generate Seedance Prompt
-                        </>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={generateScript}
+                        disabled={generating || batchGenerating || !selectedWord}
+                        className="flex-1 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                      >
+                        {generating ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Generating &ldquo;{selectedWord}&rdquo;...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-5 h-5" />
+                            Generate Seedance Prompt
+                          </>
+                        )}
+                      </button>
+
+                      {pendingWords.length > 0 && (
+                        <button
+                          onClick={batchGenerateAll}
+                          disabled={generating || batchGenerating || pendingWords.length === 0}
+                          className="flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-5 py-4 text-white font-bold text-sm shadow-lg hover:bg-epic-purple/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                        >
+                          {batchGenerating ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              {batchProgress.current}/{batchProgress.total}
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4" />
+                              Batch All ({pendingWords.length})
+                            </>
+                          )}
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1010,8 +1150,25 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                                 title={script.colorCategory}
                               />
                             )}
+                            {/* Word count badge */}
+                            {(() => {
+                              const wc = wordCount(script.script);
+                              const over = wc > 400;
+                              return (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-medium flex-shrink-0 ${
+                                    over
+                                      ? "bg-red-100 text-red-600"
+                                      : "bg-emerald-50 text-emerald-600"
+                                  }`}
+                                  title={over ? "Over 400-word Seedance limit!" : "Within limit"}
+                                >
+                                  {wc}w
+                                </span>
+                              );
+                            })()}
                             <span className="text-sm text-epic-purple/40 truncate flex-1">
-                              {script.script.slice(0, 80)}...
+                              {script.script.slice(0, 60)}...
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <button
@@ -1050,9 +1207,27 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                                 {/* Script */}
                                 <div className="lg:col-span-2 space-y-3">
-                                  <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                                    Full Animation Script
-                                  </h4>
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
+                                      Full Animation Script
+                                    </h4>
+                                    {(() => {
+                                      const wc = wordCount(script.script);
+                                      const over = wc > 400;
+                                      return (
+                                        <span
+                                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium ${
+                                            over
+                                              ? "bg-red-100 text-red-600"
+                                              : "bg-emerald-50 text-emerald-600"
+                                          }`}
+                                        >
+                                          {wc} / 400 words
+                                          {over && <AlertTriangle className="w-3 h-3" />}
+                                        </span>
+                                      );
+                                    })()}
+                                  </div>
                                   <div className="rounded-xl bg-white border border-gray-100 p-5 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono">
                                     {script.script}
                                   </div>

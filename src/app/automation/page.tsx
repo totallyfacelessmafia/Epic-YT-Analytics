@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
-import Dashboard from "@/components/Dashboard";
+import AutomationPage from "@/components/AutomationPage";
 
 interface PageProps {
   searchParams: Promise<{ key?: string }>;
 }
 
-export default async function Home({ searchParams }: PageProps) {
+export default async function Automation({ searchParams }: PageProps) {
   const params = await searchParams;
   const accessKey = params.key;
 
@@ -13,5 +13,5 @@ export default async function Home({ searchParams }: PageProps) {
     redirect("/not-found");
   }
 
-  return <Dashboard accessKey={accessKey} />;
+  return <AutomationPage accessKey={accessKey} />;
 }

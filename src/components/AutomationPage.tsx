@@ -135,10 +135,16 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
       if (!res.ok) throw new Error(data.error || "Failed to scan folder");
 
       setVideos(
-        data.files.map((f: DriveFile) => ({
+        data.files.map((f: DriveFile & { uploaded?: boolean; youtubeUrl?: string; youtubeId?: string; title?: string; description?: string; tags?: string[]; uploadedAt?: string }) => ({
           ...f,
-          status: "ready" as VideoStatus,
-          progress: 0,
+          status: (f.uploaded ? "done" : "ready") as VideoStatus,
+          progress: f.uploaded ? 100 : 0,
+          youtubeUrl: f.youtubeUrl,
+          youtubeId: f.youtubeId,
+          title: f.title,
+          description: f.description,
+          tags: f.tags,
+          uploadedAt: f.uploadedAt,
         }))
       );
     } catch (err: unknown) {

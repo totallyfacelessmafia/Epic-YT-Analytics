@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { getAllMetadata } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -31,13 +32,45 @@ export async function GET(request: NextRequest) {
       pageSize: 50,
     });
 
-    const files = (res.data.files ?? []).map((f) => ({
-      id: f.id,
-      name: f.name,
-      size: Number(f.size ?? 0),
-      createdTime: f.createdTime,
-      thumbnail: f.thumbnailLink ?? null,
-    }));
+    // Get upload history from DB
+    let uploadedMap: Record<string, { youtube_url: string | null; youtube_id: string | null; title: string; description: string; tags: string; created_at: number }> = {};
+    try {
+      const allMetadata = getAllMetadata();
+      for (const m of allMetadata) {
+        if (m.status === "uploaded" && m.drive_file_id) {
+          uploadedMap[m.drive_file_id] = {
+            youtube_url: m.youtube_url,
+            youtube_id: m.youtube_id,
+            title: m.title,
+            description: m.description,
+            tags: m.tags,
+            created_at: m.created_at,
+          };
+        }
+      }
+    } catch {
+      // DB not available (e.g. on Vercel), continue without upload history
+    }
+
+    const files = (res.data.files ?? []).map((f) => {
+      const uploaded = uploadedMap[f.id!];
+      return {
+        id: f.id,
+        name: f.name,
+        size: Number(f.size ?? 0),
+        createdTime: f.createdTime,
+        thumbnail: f.thumbnailLink ?? null,
+        ...(uploaded ? {
+          uploaded: true,
+          youtubeUrl: uploaded.youtube_url,
+          youtubeId: uploaded.youtube_id,
+          title: uploaded.title,
+          description: uploaded.description,
+          tags: JSON.parse(uploaded.tags || "[]"),
+          uploadedAt: new Date(uploaded.created_at).toISOString(),
+        } : {}),
+      };
+    });
 
     return NextResponse.json({ files });
   } catch (error: unknown) {

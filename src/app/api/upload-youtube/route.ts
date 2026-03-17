@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
 import { Readable } from "stream";
+import { updateMetadataUpload } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -96,10 +97,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const youtubeUrl = `https://youtube.com/watch?v=${uploadRes.data.id}`;
+
+    // Update database with upload info
+    try {
+      updateMetadataUpload(driveFileId, youtubeUrl, uploadRes.data.id!);
+    } catch (dbErr) {
+      console.error("DB update error (non-fatal):", dbErr);
+    }
+
     return NextResponse.json({
       videoId: uploadRes.data.id,
       title: uploadRes.data.snippet?.title,
-      url: `https://youtube.com/watch?v=${uploadRes.data.id}`,
+      url: youtubeUrl,
     });
   } catch (error: unknown) {
     console.error("Upload error:", error);

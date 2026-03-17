@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getColorMapping } from "@/lib/color-map";
 
 export async function POST(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -26,17 +27,14 @@ export async function POST(request: NextRequest) {
 
   // Rotate settings deterministically based on the word
   const settings = ["Dojo", "Bamboo Forest", "Rooftop", "Ninja Kitchen"];
-  const bgColors = [
-    "flat solid soft lavender periwinkle purple wall with warm sandy beige tan floor",
-    "lush green bamboo forest with soft mossy ground",
-    "twilight rooftop with deep navy sky and warm clay tiles",
-    "cozy kitchen with pale mint walls and warm wooden countertops",
-  ];
   const settingIndex =
     word.split("").reduce((acc: number, c: string) => acc + c.charCodeAt(0), 0) %
     settings.length;
   const setting = settings[settingIndex];
-  const bgColor = bgColors[settingIndex];
+
+  // Use color-word mapping for background colors
+  const colorMapping = getColorMapping(word);
+  const bgColor = colorMapping.bgColor;
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -109,6 +107,10 @@ Return ONLY valid JSON in this exact format:
       .replace(/```\n?/g, "")
       .trim();
     const script = JSON.parse(cleaned);
+
+    // Attach color mapping info to the response
+    script.colorCategory = colorMapping.category;
+    script.bgColor = colorMapping.cssGradient;
 
     return NextResponse.json(script);
   } catch (error: unknown) {

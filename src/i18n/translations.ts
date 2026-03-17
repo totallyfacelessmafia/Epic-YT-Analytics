@@ -62,6 +62,7 @@ const translations: Record<string, Record<Locale, string>> = {
   // Navigation
   "nav.analytics": { en: "Analytics", zh: "数据分析" },
   "nav.automation": { en: "Video Automation", zh: "视频自动化" },
+  "nav.promptEngine": { en: "Prompt Engine", zh: "提示引擎" },
 
   // Automation Page
   "auto.title": { en: "Epic Video Automation", zh: "Epic 视频自动化" },

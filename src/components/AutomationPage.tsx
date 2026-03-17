@@ -157,7 +157,7 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
       const res = await fetch(apiUrl("/api/generate-metadata"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: video.name }),
+        body: JSON.stringify({ filename: video.name, driveFileId: video.id }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate metadata");

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { createMetadata } from "@/lib/db";
 
 export async function POST(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { filename } = await request.json();
+  const { filename, driveFileId } = await request.json();
 
   if (!filename) {
     return NextResponse.json({ error: "filename is required" }, { status: 400 });
@@ -88,6 +89,21 @@ Return ONLY valid JSON in this exact format:
     const text = message.content[0].type === "text" ? message.content[0].text : "";
     const cleaned = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const metadata = JSON.parse(cleaned);
+
+    // Save to database
+    if (driveFileId) {
+      try {
+        createMetadata({
+          drive_file_id: driveFileId,
+          filename,
+          title: metadata.title,
+          description: metadata.description,
+          tags: metadata.tags || [],
+        });
+      } catch (dbErr) {
+        console.error("DB save error (non-fatal):", dbErr);
+      }
+    }
 
     return NextResponse.json(metadata);
   } catch (error: unknown) {

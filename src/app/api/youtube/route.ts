@@ -191,10 +191,11 @@ export async function GET(request: NextRequest) {
       channelDetails.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
 
     let uploadCounts = { thisWeek: 0, lastWeek: 0, last30Days: 0 };
+    let unlistedCounts = { today: 0, thisWeek: 0, lastWeek: 0 };
 
     if (uploadsPlaylistId) {
       // Fetch up to 50 recent playlist items (covers last 30 days for most channels)
-      let allItems: { publishedAt: string }[] = [];
+      let allItems: { publishedAt: string; videoId: string }[] = [];
       let nextPageToken: string | undefined;
 
       do {
@@ -207,6 +208,7 @@ export async function GET(request: NextRequest) {
 
         const items = (playlistRes.data.items ?? []).map((item) => ({
           publishedAt: item.snippet?.publishedAt ?? "",
+          videoId: item.snippet?.resourceId?.videoId ?? "",
         }));
         allItems = allItems.concat(items);
         nextPageToken = playlistRes.data.nextPageToken ?? undefined;
@@ -216,11 +218,40 @@ export async function GET(request: NextRequest) {
         if (oldest && new Date(oldest) < start30) break;
       } while (nextPageToken);
 
+      // Count total uploads by period
       for (const item of allItems) {
         const pubDate = new Date(item.publishedAt);
         if (pubDate >= start30) uploadCounts.last30Days++;
         if (pubDate >= startOfThisWeek) uploadCounts.thisWeek++;
         if (pubDate >= startOfLastWeek && pubDate < startOfThisWeek) uploadCounts.lastWeek++;
+      }
+
+      // Get video IDs from last 30 days to check privacy status
+      const recentVideoIds = allItems
+        .filter((item) => new Date(item.publishedAt) >= startOfLastWeek && item.videoId)
+        .map((item) => item.videoId);
+
+      if (recentVideoIds.length > 0) {
+        // Fetch in batches of 50
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 0; i < recentVideoIds.length; i += 50) {
+          const batch = recentVideoIds.slice(i, i + 50);
+          const statusRes = await youtube.videos.list({
+            part: ["status", "snippet"],
+            id: batch,
+          });
+
+          for (const video of statusRes.data.items ?? []) {
+            if (video.status?.privacyStatus === "unlisted") {
+              const pubDate = new Date(video.snippet?.publishedAt ?? "");
+              if (pubDate >= today) unlistedCounts.today++;
+              if (pubDate >= startOfThisWeek) unlistedCounts.thisWeek++;
+              if (pubDate >= startOfLastWeek && pubDate < startOfThisWeek) unlistedCounts.lastWeek++;
+            }
+          }
+        }
       }
     }
 
@@ -234,6 +265,7 @@ export async function GET(request: NextRequest) {
       dailyData,
       topVideos: filteredTopVideos.slice(0, 5),
       uploadCounts,
+      unlistedCounts,
     });
   } catch (error: unknown) {
     console.error("YouTube API error:", error);

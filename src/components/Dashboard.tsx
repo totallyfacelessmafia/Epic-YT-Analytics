@@ -28,12 +28,19 @@ interface UploadCounts {
   last30Days: number;
 }
 
+interface UnlistedCounts {
+  today: number;
+  thisWeek: number;
+  lastWeek: number;
+}
+
 interface AnalyticsData {
   totals: { views: number; watchTime: number; subscribers: number };
   changes: { views: number; watchTime: number; subscribers: number };
   dailyData: { date: string; views: number; watchTime: number; subscribers: number }[];
   topVideos: TopVideo[];
   uploadCounts: UploadCounts;
+  unlistedCounts: UnlistedCounts;
 }
 
 function formatNumber(n: number): string {
@@ -199,7 +206,7 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             />
             <SubscribersChart data={data.dailyData} />
             <TopVideos videos={data.topVideos} />
-            <UploadFrequency counts={data.uploadCounts} />
+            <UploadFrequency counts={data.uploadCounts} unlistedCounts={data.unlistedCounts} />
           </div>
         )}
       </main>

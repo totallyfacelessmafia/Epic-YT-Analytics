@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Wand2,
   Copy,
   Check,
   Trash2,
   Plus,
-  Play,
   Loader2,
   ChevronDown,
   ChevronUp,
@@ -17,6 +16,12 @@ import {
   Download,
   AlertCircle,
   Database,
+  Upload,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  ListChecks,
+  Zap,
 } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
 import Sidebar from "./Sidebar";
@@ -53,6 +58,15 @@ interface GeneratedScript {
   generatedAt: number;
 }
 
+interface WordEntry {
+  id: number;
+  word: string;
+  status: string;
+  characterId: string | null;
+  addedAt: number;
+  producedAt: number | null;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -65,58 +79,70 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
     [accessKey]
   );
 
-  // Character profiles
+  /* ---- State ---- */
+
+  // Step 1: Characters
   const [characters, setCharacters] = useState<CharacterProfile[]>([]);
   const [selectedCharId, setSelectedCharId] = useState("kitten-ninja");
   const [showNewChar, setShowNewChar] = useState(false);
   const [newCharName, setNewCharName] = useState("");
   const [newCharDna, setNewCharDna] = useState("");
-  const [editingCharId, setEditingCharId] = useState<string | null>(null);
-  const [editCharDna, setEditCharDna] = useState("");
   const [loadingChars, setLoadingChars] = useState(true);
 
-  // Word input
-  const [wordInput, setWordInput] = useState("");
+  // Step 2: Word Library
+  const [words, setWords] = useState<WordEntry[]>([]);
+  const [loadingWords, setLoadingWords] = useState(true);
+  const [selectedWord, setSelectedWord] = useState<string | null>(null);
+  const [newWordInput, setNewWordInput] = useState("");
+  const [duplicateWarning, setDuplicateWarning] = useState("");
+  const [csvImportText, setCsvImportText] = useState("");
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [importResult, setImportResult] = useState<{ added: number; duplicates: number } | null>(null);
+  const [wordTab, setWordTab] = useState<"pending" | "produced">("pending");
 
-  // Generation state
+  // Step 3: Generation
   const [scripts, setScripts] = useState<GeneratedScript[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [genProgress, setGenProgress] = useState({ current: 0, total: 0 });
-  const [error, setError] = useState("");
   const [loadingScripts, setLoadingScripts] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
 
-  // UI state
+  // UI
   const [expandedScript, setExpandedScript] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [currentStep, setCurrentStep] = useState(1);
 
   const selectedChar = characters.find((c) => c.id === selectedCharId) ?? characters[0];
+  const pendingWords = words.filter((w) => w.status === "pending");
+  const producedWords = words.filter((w) => w.status === "produced");
 
-  /* ---- Load from database on mount ---- */
+  const checkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* ---- Load from database ---- */
 
   useEffect(() => {
-    fetch(apiUrl("/api/characters"))
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.characters) setCharacters(data.characters);
+    Promise.all([
+      fetch(apiUrl("/api/characters")).then((r) => r.json()),
+      fetch(apiUrl("/api/words")).then((r) => r.json()),
+      fetch(apiUrl("/api/scripts")).then((r) => r.json()),
+    ])
+      .then(([charData, wordData, scriptData]) => {
+        if (charData.characters) setCharacters(charData.characters);
+        if (wordData.words) setWords(wordData.words);
+        if (scriptData.scripts) setScripts(scriptData.scripts);
       })
       .catch(() => {})
-      .finally(() => setLoadingChars(false));
-
-    fetch(apiUrl("/api/scripts"))
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.scripts) setScripts(data.scripts);
-      })
-      .catch(() => {})
-      .finally(() => setLoadingScripts(false));
+      .finally(() => {
+        setLoadingChars(false);
+        setLoadingWords(false);
+        setLoadingScripts(false);
+      });
   }, [apiUrl]);
 
-  /* ---- Character CRUD ---- */
+  /* ---- Step 1: Character CRUD ---- */
 
   const addCharacter = useCallback(async () => {
     if (!newCharName.trim() || !newCharDna.trim()) return;
     const id = newCharName.toLowerCase().replace(/\s+/g, "-") + "-" + Date.now();
-
     try {
       const res = await fetch(apiUrl("/api/characters"), {
         method: "POST",
@@ -150,91 +176,203 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
     [selectedCharId, apiUrl]
   );
 
-  const saveEditedDna = useCallback(
-    async (id: string) => {
-      try {
-        await fetch(apiUrl("/api/characters"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "update", id, visualDna: editCharDna }),
-        });
-        setCharacters((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, visualDna: editCharDna } : c))
-        );
-      } catch {}
-      setEditingCharId(null);
+  /* ---- Step 2: Word Library ---- */
+
+  const checkDuplicate = useCallback(
+    (word: string) => {
+      if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+      const clean = word.toLowerCase().trim();
+      if (!clean) { setDuplicateWarning(""); return; }
+
+      checkTimerRef.current = setTimeout(async () => {
+        try {
+          const res = await fetch(apiUrl("/api/words"), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "check", word: clean }),
+          });
+          const data = await res.json();
+          if (data.hasScript) {
+            setDuplicateWarning(`Warning: You already made a video for "${clean}"!`);
+          } else {
+            setDuplicateWarning("");
+          }
+        } catch {}
+      }, 300);
     },
-    [editCharDna, apiUrl]
+    [apiUrl]
   );
 
-  /* ---- Script generation ---- */
+  const addNewWord = useCallback(async () => {
+    const clean = newWordInput.toLowerCase().trim();
+    if (!clean) return;
 
-  const generateScripts = useCallback(async () => {
-    const words = wordInput
-      .split(/[\n,]+/)
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    try {
+      const res = await fetch(apiUrl("/api/words"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ word: clean }),
+      });
+      const data = await res.json();
 
-    if (words.length === 0 || !selectedChar) return;
+      if (res.status === 409) {
+        setDuplicateWarning(data.message || `"${clean}" already exists!`);
+        return;
+      }
+
+      if (data.word) {
+        setWords((prev) => [data.word, ...prev]);
+        setSelectedWord(clean);
+        setNewWordInput("");
+        setDuplicateWarning("");
+      }
+    } catch {}
+  }, [newWordInput, apiUrl]);
+
+  const importCsv = useCallback(async () => {
+    if (!csvImportText.trim()) return;
+    try {
+      const res = await fetch(apiUrl("/api/words"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import", words: csvImportText }),
+      });
+      const data = await res.json();
+      setImportResult(data);
+
+      // Reload words
+      const wordsRes = await fetch(apiUrl("/api/words"));
+      const wordsData = await wordsRes.json();
+      if (wordsData.words) setWords(wordsData.words);
+
+      setCsvImportText("");
+      setTimeout(() => setImportResult(null), 5000);
+    } catch {}
+  }, [csvImportText, apiUrl]);
+
+  const deleteWordHandler = useCallback(
+    async (word: string) => {
+      try {
+        await fetch(apiUrl("/api/words"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", word }),
+        });
+        setWords((prev) => prev.filter((w) => w.word !== word));
+        if (selectedWord === word) setSelectedWord(null);
+      } catch {}
+    },
+    [selectedWord, apiUrl]
+  );
+
+  /* ---- Step 3: Generate ---- */
+
+  const generateScript = useCallback(async () => {
+    if (!selectedWord || !selectedChar) return;
 
     setGenerating(true);
     setError("");
-    setGenProgress({ current: 0, total: words.length });
+    setCurrentStep(3);
 
-    const newScripts: GeneratedScript[] = [];
-
-    for (let i = 0; i < words.length; i++) {
-      setGenProgress({ current: i + 1, total: words.length });
-      try {
-        const res = await fetch(apiUrl("/api/generate-script"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            word: words[i],
-            characterName: selectedChar.name,
-            visualDna: selectedChar.visualDna,
-          }),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || `HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        const script: GeneratedScript = {
-          id: `${words[i]}-${Date.now()}-${i}`,
-          word: data.word || words[i],
-          characterId: selectedChar.id,
+    try {
+      const res = await fetch(apiUrl("/api/generate-script"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          word: selectedWord,
           characterName: selectedChar.name,
-          setting: data.setting || "",
-          background: data.background || "",
-          script: data.script || "",
-          narratorLines: data.narratorLines || [],
-          negativePrompt: data.negativePrompt || "",
-          colorCategory: data.colorCategory || "",
-          bgColor: data.bgColor || "",
-          generatedAt: Date.now(),
-        };
+          visualDna: selectedChar.visualDna,
+        }),
+      });
 
-        newScripts.push(script);
-
-        // Save to database
-        fetch(apiUrl("/api/scripts"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ script }),
-        }).catch(() => {});
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        setError(`Failed on "${words[i]}": ${msg}`);
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || `HTTP ${res.status}`);
       }
-    }
 
-    setScripts((prev) => [...newScripts, ...prev]);
-    setGenerating(false);
-    if (newScripts.length > 0) setExpandedScript(newScripts[0].id);
-  }, [wordInput, selectedChar, apiUrl]);
+      const data = await res.json();
+      const script: GeneratedScript = {
+        id: `${selectedWord}-${Date.now()}`,
+        word: data.word || selectedWord,
+        characterId: selectedChar.id,
+        characterName: selectedChar.name,
+        setting: data.setting || "Lavender Dojo",
+        background: data.background || "",
+        script: data.script || "",
+        narratorLines: data.narratorLines || [],
+        negativePrompt: data.negativePrompt || "",
+        colorCategory: data.colorCategory || "",
+        bgColor: data.bgColor || "",
+        generatedAt: Date.now(),
+      };
+
+      // Save script to DB
+      await fetch(apiUrl("/api/scripts"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script }),
+      });
+
+      // Mark word as produced
+      await fetch(apiUrl("/api/words"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "produce", word: selectedWord, characterId: selectedChar.id }),
+      });
+
+      setScripts((prev) => [script, ...prev]);
+      setWords((prev) =>
+        prev.map((w) =>
+          w.word === selectedWord
+            ? { ...w, status: "produced", producedAt: Date.now(), characterId: selectedChar.id }
+            : w
+        )
+      );
+      setExpandedScript(script.id);
+      setSelectedWord(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(`Failed: ${msg}`);
+    } finally {
+      setGenerating(false);
+    }
+  }, [selectedWord, selectedChar, apiUrl]);
+
+  /* ---- Copy helpers ---- */
+
+  const copyScript = useCallback(async (script: GeneratedScript) => {
+    const fullPrompt = `🎬 ANIMATION SCRIPT — ${script.characterName.toUpperCase()} "${script.word}"
+Single Continuous 15-Second Video Prompt
+
+A 15-second continuous vertical 9:16 kids educational cartoon video.
+
+STRICT TEXT RULES: NO ON-SCREEN CAPTIONS, SUBTITLES, OR "WORD OF THE DAY" TEXT ALLOWED. The only visual text in the entire video is the single word ${script.word} written on the lavender wall in all lower case letters. No capital letters. The text is clean, bold, black-outlined, and static.
+
+SILENT CHARACTER: ${script.characterName} NEVER speaks. Only the offscreen narrator has lines.
+
+BACKGROUND: ${script.background}
+
+${script.script}
+
+🗣️ NARRATOR LINES (offscreen only)
+${script.narratorLines.map((l) => `"${l.line}" — ${l.time}`).join("\n")}
+
+💡 NEGATIVE PROMPT:
+${script.negativePrompt}`;
+
+    await navigator.clipboard.writeText(fullPrompt);
+    setCopiedId(script.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }, []);
+
+  const copyNarrator = useCallback(async (script: GeneratedScript) => {
+    const narratorText = script.narratorLines
+      .map((l) => `[${l.time}] ${l.line}`)
+      .join("\n");
+    await navigator.clipboard.writeText(narratorText);
+    setCopiedId(`narrator-${script.id}`);
+    setTimeout(() => setCopiedId(null), 2000);
+  }, []);
 
   const deleteScriptHandler = useCallback(
     async (id: string) => {
@@ -250,70 +388,19 @@ export default function PromptEngine({ accessKey }: { accessKey: string }) {
     [apiUrl]
   );
 
-  const clearAllScripts = useCallback(async () => {
-    try {
-      await fetch(apiUrl("/api/scripts"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clear" }),
-      });
-      setScripts([]);
-    } catch {}
-  }, [apiUrl]);
-
-  /* ---- Copy to clipboard ---- */
-
-  const copyScript = useCallback(async (script: GeneratedScript) => {
-    const fullPrompt = `🎬 ANIMATION SCRIPT — ${script.characterName.toUpperCase()} "${script.word}"
-Single Continuous 15-Second Video Prompt
-
-A 15-second continuous vertical 9:16 kids educational cartoon video.
-
-STRICT TEXT RULES: NO ON-SCREEN CAPTIONS, SUBTITLES, OR "WORD OF THE DAY" TEXT ALLOWED. The only visual text in the entire video is the single word ${script.word} written in the background in all lower case letters. No capital letters. The text is clean, bold, black-outlined, and static.
-
-SETTING: ${script.setting}
-BACKGROUND: ${script.background}
-
-${script.script}
-
-🗣️ NARRATOR LINES
-${script.narratorLines.map((l) => `"${l.line}" — ${l.time}`).join("\n")}
-
-💡 NEGATIVE PROMPT:
-${script.negativePrompt}`;
-
-    await navigator.clipboard.writeText(fullPrompt);
-    setCopiedId(script.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  }, []);
-
-  /* ---- Copy narrator only ---- */
-
-  const copyNarrator = useCallback(async (script: GeneratedScript) => {
-    const narratorText = script.narratorLines
-      .map((l) => `[${l.time}] ${l.line}`)
-      .join("\n");
-    await navigator.clipboard.writeText(narratorText);
-    setCopiedId(`narrator-${script.id}`);
-    setTimeout(() => setCopiedId(null), 2000);
-  }, []);
-
   const exportAll = useCallback(async () => {
     const all = scripts
-      .map((s) => {
-        return `${"=".repeat(60)}
+      .map((s) => `${"=".repeat(60)}
 🎬 ${s.characterName.toUpperCase()} — "${s.word}"
-Setting: ${s.setting} | Color: ${s.colorCategory || "General"}
 ${"=".repeat(60)}
 
 ${s.script}
 
-NARRATOR:
+NARRATOR (offscreen):
 ${s.narratorLines.map((l) => `  ${l.time}: "${l.line}"`).join("\n")}
 
 NEGATIVE PROMPT: ${s.negativePrompt}
-`;
-      })
+`)
       .join("\n\n");
 
     const blob = new Blob([all], { type: "text/plain" });
@@ -325,25 +412,8 @@ NEGATIVE PROMPT: ${s.negativePrompt}
     URL.revokeObjectURL(url);
   }, [scripts]);
 
-  /* ---- Setting badge color ---- */
-
-  function settingColor(setting: string) {
-    switch (setting) {
-      case "Dojo":
-        return "bg-red-100 text-red-700";
-      case "Bamboo Forest":
-        return "bg-emerald-100 text-emerald-700";
-      case "Rooftop":
-        return "bg-indigo-100 text-indigo-700";
-      case "Ninja Kitchen":
-        return "bg-amber-100 text-amber-700";
-      default:
-        return "bg-gray-100 text-gray-700";
-    }
-  }
-
-  /* ---- Loading state ---- */
-  const isLoading = loadingChars || loadingScripts;
+  /* ---- Loading ---- */
+  const isLoading = loadingChars || loadingWords || loadingScripts;
 
   /* ------------------------------------------------------------------ */
   /*  Render                                                             */
@@ -365,7 +435,7 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                 {t("prompt.title")}
               </h1>
               <p className="text-sm text-epic-purple/50 mt-0.5 font-georgia flex items-center gap-2">
-                {t("prompt.subtitle")}
+                Seedance 2.0 Script Generator
                 <span className="inline-flex items-center gap-1 text-xs text-epic-teal font-roboto">
                   <Database className="w-3 h-3" />
                   SQLite
@@ -379,7 +449,7 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                   className="flex items-center gap-2 rounded-xl bg-epic-purple/5 px-4 py-2.5 text-sm font-medium text-epic-purple hover:bg-epic-purple/10 transition-colors"
                 >
                   <Download className="w-4 h-4" />
-                  {t("prompt.exportAll")}
+                  Export All
                 </button>
               )}
               <LanguageToggle />
@@ -393,51 +463,125 @@ NEGATIVE PROMPT: ${s.negativePrompt}
           </div>
         ) : (
           <div className="p-8 space-y-6">
-            {/* ── Top row: Character + Word Input ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-              {/* Character Profile Panel */}
-              <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+            {/* ── 3-Step Progress Bar ── */}
+            <div className="flex items-center gap-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-2">
+              {[
+                { step: 1, label: "Select Character", icon: Palette },
+                { step: 2, label: "Pick Word", icon: ListChecks },
+                { step: 3, label: "Generate", icon: Zap },
+              ].map(({ step, label, icon: Icon }, idx) => (
+                <button
+                  key={step}
+                  onClick={() => setCurrentStep(step)}
+                  className={`flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-sm font-medium transition-all ${
+                    currentStep === step
+                      ? "bg-epic-purple text-white shadow-md"
+                      : currentStep > step
+                      ? "text-epic-teal"
+                      : "text-epic-purple/40"
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
+                      currentStep === step
+                        ? "bg-white/20 text-white"
+                        : currentStep > step
+                        ? "bg-epic-teal/20 text-epic-teal"
+                        : "bg-gray-100 text-gray-400"
+                    }`}
+                  >
+                    {currentStep > step ? (
+                      <Check className="w-4 h-4" />
+                    ) : (
+                      step
+                    )}
+                  </div>
+                  <span className="hidden sm:inline">{label}</span>
+                  <Icon className="w-4 h-4 sm:hidden" />
+                  {idx < 2 && (
+                    <div className={`ml-auto w-8 h-0.5 rounded ${
+                      currentStep > step ? "bg-epic-teal/30" : "bg-gray-200"
+                    }`} />
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* ════════════════════════════════════════════════════════ */}
+            {/*  STEP 1: Select Character                               */}
+            {/* ════════════════════════════════════════════════════════ */}
+            {currentStep === 1 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
-                    <Palette className="w-4 h-4 text-epic-teal" />
-                    {t("prompt.characterProfiles")}
+                  <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
+                    <Palette className="w-5 h-5 text-epic-teal" />
+                    Step 1: Select Character
                   </h2>
                   <button
                     onClick={() => setShowNewChar(!showNewChar)}
                     className="flex items-center gap-1.5 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    {t("prompt.addCharacter")}
+                    Add New Character
                   </button>
                 </div>
 
-                <div className="p-5 space-y-4">
-                  {/* Character selector */}
-                  <div className="flex flex-wrap gap-2">
+                <div className="p-6 space-y-5">
+                  {/* Character cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {characters.map((char) => (
                       <button
                         key={char.id}
                         onClick={() => {
                           setSelectedCharId(char.id);
-                          setEditingCharId(null);
+                          setCurrentStep(2);
                         }}
-                        className={`relative group px-3.5 py-2 rounded-xl text-sm font-medium transition-all ${
+                        className={`relative group text-left p-5 rounded-2xl border-2 transition-all ${
                           selectedCharId === char.id
-                            ? "bg-epic-purple text-white shadow-md shadow-epic-purple/20"
-                            : "bg-gray-50 text-epic-purple/70 hover:bg-gray-100"
+                            ? "border-epic-purple bg-epic-purple/5 shadow-md shadow-epic-purple/10"
+                            : "border-gray-100 bg-gray-50/50 hover:border-epic-blue/30 hover:bg-white"
                         }`}
                       >
-                        {char.name}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div
+                            className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold ${
+                              selectedCharId === char.id
+                                ? "bg-epic-purple text-white"
+                                : "bg-gray-200/80 text-epic-purple/60"
+                            }`}
+                          >
+                            {char.name[0]}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-epic-purple">{char.name}</p>
+                            <p className="text-xs text-epic-purple/40">
+                              {selectedCharId === char.id ? "Selected" : "Click to select"}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-epic-purple/50 line-clamp-3 font-mono leading-relaxed">
+                          {char.visualDna.slice(0, 150)}...
+                        </p>
+
+                        {/* Delete button for non-default */}
                         {char.id !== "kitten-ninja" && (
                           <span
                             onClick={(e) => {
                               e.stopPropagation();
                               deleteCharacterHandler(char.id);
                             }}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            className="absolute top-3 right-3 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
                           >
                             ×
                           </span>
+                        )}
+
+                        {/* Selected indicator */}
+                        {selectedCharId === char.id && (
+                          <div className="absolute top-3 right-3">
+                            <CheckCircle2 className="w-6 h-6 text-epic-purple" />
+                          </div>
                         )}
                       </button>
                     ))}
@@ -445,377 +589,526 @@ NEGATIVE PROMPT: ${s.negativePrompt}
 
                   {/* New character form */}
                   {showNewChar && (
-                    <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-4 space-y-3">
+                    <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-5 space-y-3">
                       <input
                         value={newCharName}
                         onChange={(e) => setNewCharName(e.target.value)}
-                        placeholder={t("prompt.charNamePlaceholder")}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                        placeholder="Character name (e.g., Captain Quill)"
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
                       />
                       <textarea
                         value={newCharDna}
                         onChange={(e) => setNewCharDna(e.target.value)}
-                        placeholder={t("prompt.charDnaPlaceholder")}
-                        rows={5}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none"
+                        placeholder="Visual DNA — describe the character's appearance rules, style constraints, and personality..."
+                        rows={6}
+                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none font-mono"
                       />
                       <div className="flex gap-2">
                         <button
                           onClick={addCharacter}
                           disabled={!newCharName.trim() || !newCharDna.trim()}
-                          className="px-4 py-2 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="px-5 py-2.5 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90 transition-colors disabled:opacity-40"
                         >
-                          {t("prompt.save")}
+                          Save Character
                         </button>
                         <button
                           onClick={() => setShowNewChar(false)}
-                          className="px-4 py-2 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+                          className="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
                         >
-                          {t("prompt.cancel")}
+                          Cancel
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* Selected character Visual DNA */}
+                  {/* Continue button */}
                   {selectedChar && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-semibold text-epic-purple/60 uppercase tracking-wider">
-                          {t("prompt.visualDna")}
-                        </label>
-                        <button
-                          onClick={() => {
-                            if (editingCharId === selectedChar.id) {
-                              saveEditedDna(selectedChar.id);
-                            } else {
-                              setEditingCharId(selectedChar.id);
-                              setEditCharDna(selectedChar.visualDna);
-                            }
-                          }}
-                          className="text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
-                        >
-                          {editingCharId === selectedChar.id
-                            ? t("prompt.saveDna")
-                            : t("prompt.editDna")}
-                        </button>
-                      </div>
-                      {editingCharId === selectedChar.id ? (
-                        <textarea
-                          value={editCharDna}
-                          onChange={(e) => setEditCharDna(e.target.value)}
-                          rows={8}
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-epic-purple leading-relaxed focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none font-mono"
-                        />
-                      ) : (
-                        <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-sm text-epic-purple/80 leading-relaxed max-h-48 overflow-y-auto font-mono whitespace-pre-wrap">
-                          {selectedChar.visualDna}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      onClick={() => setCurrentStep(2)}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-6 py-3.5 text-white font-semibold text-sm shadow-lg shadow-epic-purple/20 hover:shadow-xl transition-all"
+                    >
+                      Continue with {selectedChar.name}
+                      <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
+                    </button>
                   )}
-                </div>
-              </div>
-
-              {/* Word Input + Generate Panel */}
-              <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100">
-                  <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
-                    <Wand2 className="w-4 h-4 text-epic-yellow" />
-                    {t("prompt.scriptGenerator")}
-                  </h2>
-                </div>
-
-                <div className="p-5 space-y-4">
-                  <div>
-                    <label className="text-xs font-semibold text-epic-purple/60 uppercase tracking-wider block mb-2">
-                      {t("prompt.wordsLabel")}
-                    </label>
-                    <textarea
-                      value={wordInput}
-                      onChange={(e) => setWordInput(e.target.value)}
-                      placeholder={t("prompt.wordsPlaceholder")}
-                      rows={4}
-                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none leading-relaxed"
-                    />
-                    <p className="text-xs text-gray-400 mt-1.5">
-                      {t("prompt.wordsHint")}
-                    </p>
-                  </div>
-
-                  {/* Active character badge */}
-                  {selectedChar && (
-                    <div className="flex items-center gap-3 rounded-xl bg-epic-purple/5 px-4 py-3">
-                      <div className="w-8 h-8 rounded-lg bg-epic-purple/10 flex items-center justify-center text-epic-purple text-sm font-bold">
-                        {selectedChar.name[0]}
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-epic-purple">
-                          {selectedChar.name}
-                        </p>
-                        <p className="text-xs text-epic-purple/50">
-                          {t("prompt.activeCharacter")}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {error && (
-                    <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
-                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={generateScripts}
-                    disabled={generating || !wordInput.trim()}
-                    className="w-full flex items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-3.5 text-white font-semibold text-sm shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                  >
-                    {generating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        {t("prompt.generating")} {genProgress.current}/
-                        {genProgress.total}
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        {t("prompt.generateBtn")}
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* ── Scripts Dashboard ── */}
-            {scripts.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
-                    <Play className="w-4 h-4 text-epic-blue" />
-                    {t("prompt.generatedScripts")}{" "}
-                    <span className="text-xs font-normal text-epic-purple/40">
-                      ({scripts.length})
-                    </span>
-                  </h2>
-                  <button
-                    onClick={clearAllScripts}
-                    className="text-xs text-red-400 hover:text-red-600 transition-colors font-medium"
-                  >
-                    {t("prompt.clearAll")}
-                  </button>
-                </div>
-
-                {/* Table header */}
-                <div className="grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50/50 border-b border-gray-100 text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                  <div className="col-span-2">{t("prompt.colWord")}</div>
-                  <div className="col-span-2">{t("prompt.colCharacter")}</div>
-                  <div className="col-span-2">{t("prompt.colSetting")}</div>
-                  <div className="col-span-1">Color</div>
-                  <div className="col-span-2">{t("prompt.colPreview")}</div>
-                  <div className="col-span-3 text-right">
-                    {t("prompt.colActions")}
-                  </div>
-                </div>
-
-                {/* Table rows */}
-                <div className="divide-y divide-gray-50">
-                  {scripts.map((script) => (
-                    <div key={script.id}>
-                      {/* Row summary */}
-                      <div
-                        className="grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-gray-50/50 transition-colors cursor-pointer"
-                        onClick={() =>
-                          setExpandedScript(
-                            expandedScript === script.id ? null : script.id
-                          )
-                        }
-                      >
-                        <div className="col-span-2">
-                          <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm">
-                            {script.word}
-                          </span>
-                        </div>
-                        <div className="col-span-2 text-sm text-epic-purple/70">
-                          {script.characterName}
-                        </div>
-                        <div className="col-span-2">
-                          <span
-                            className={`inline-flex px-2.5 py-1 rounded-lg text-xs font-medium ${settingColor(
-                              script.setting
-                            )}`}
-                          >
-                            {script.setting}
-                          </span>
-                        </div>
-                        <div className="col-span-1">
-                          {script.colorCategory && (
-                            <span
-                              className="inline-block w-5 h-5 rounded-md border border-gray-200"
-                              style={{ background: script.bgColor || "#EDE9FE" }}
-                              title={script.colorCategory}
-                            />
-                          )}
-                        </div>
-                        <div className="col-span-2 text-sm text-epic-purple/50 truncate">
-                          {script.script.slice(0, 60)}…
-                        </div>
-                        <div className="col-span-3 flex items-center justify-end gap-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyScript(script);
-                            }}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
-                          >
-                            {copiedId === script.id ? (
-                              <>
-                                <Check className="w-3.5 h-3.5" />
-                                {t("prompt.copied")}
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="w-3.5 h-3.5" />
-                                {t("prompt.copy")}
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteScriptHandler(script.id);
-                            }}
-                            className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          {expandedScript === script.id ? (
-                            <ChevronUp className="w-4 h-4 text-gray-400" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-gray-400" />
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Expanded detail */}
-                      {expandedScript === script.id && (
-                        <div className="px-6 pb-5 bg-gray-50/30">
-                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                            {/* Script */}
-                            <div className="lg:col-span-2 space-y-3">
-                              <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                                {t("prompt.fullScript")}
-                              </h4>
-                              <div className="rounded-xl bg-white border border-gray-100 p-5 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono">
-                                {script.script}
-                              </div>
-                            </div>
-
-                            {/* Sidebar info */}
-                            <div className="space-y-4">
-                              {/* Narrator — separate copyable block */}
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                                    {t("prompt.narratorLines")}
-                                  </h4>
-                                  <button
-                                    onClick={() => copyNarrator(script)}
-                                    className="flex items-center gap-1 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
-                                  >
-                                    {copiedId === `narrator-${script.id}` ? (
-                                      <>
-                                        <Check className="w-3 h-3" />
-                                        Copied
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Copy className="w-3 h-3" />
-                                        Copy Lines
-                                      </>
-                                    )}
-                                  </button>
-                                </div>
-                                <div className="rounded-xl bg-white border border-epic-blue/20 p-4 space-y-2.5">
-                                  {script.narratorLines.map((nl, i) => (
-                                    <div key={i} className="flex gap-3 text-sm">
-                                      <span className="text-epic-blue font-mono font-medium shrink-0 w-12">
-                                        {nl.time}
-                                      </span>
-                                      <span className="text-epic-purple/70 italic">
-                                        &ldquo;{nl.line}&rdquo;
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Color category */}
-                              {script.colorCategory && (
-                                <div>
-                                  <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider mb-2">
-                                    Color Palette
-                                  </h4>
-                                  <div className="rounded-xl border border-gray-100 p-4 flex items-center gap-3">
-                                    <div
-                                      className="w-10 h-10 rounded-lg border border-gray-200"
-                                      style={{ background: script.bgColor || "#EDE9FE" }}
-                                    />
-                                    <div>
-                                      <p className="text-sm font-medium text-epic-purple">
-                                        {script.colorCategory}
-                                      </p>
-                                      <p className="text-xs text-epic-purple/40">
-                                        Auto-mapped from word
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Background */}
-                              <div>
-                                <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider mb-2">
-                                  {t("prompt.background")}
-                                </h4>
-                                <div className="rounded-xl bg-white border border-gray-100 p-4 text-sm text-epic-purple/70">
-                                  {script.background}
-                                </div>
-                              </div>
-
-                              {/* Negative prompt */}
-                              <div>
-                                <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider mb-2">
-                                  {t("prompt.negPrompt")}
-                                </h4>
-                                <div className="rounded-xl bg-red-50/50 border border-red-100/50 p-4 text-sm text-red-600/70 font-mono">
-                                  {script.negativePrompt}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
 
-            {/* Empty state */}
-            {scripts.length === 0 && !generating && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-16 h-16 rounded-2xl bg-epic-purple/5 flex items-center justify-center mb-4">
-                  <Scroll className="w-8 h-8 text-epic-purple/20" />
+            {/* ════════════════════════════════════════════════════════ */}
+            {/*  STEP 2: Pick or Add Word                               */}
+            {/* ════════════════════════════════════════════════════════ */}
+            {currentStep === 2 && (
+              <div className="space-y-6">
+                {/* Active character badge */}
+                <div className="flex items-center gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3">
+                  <div className="w-10 h-10 rounded-xl bg-epic-purple flex items-center justify-center text-white text-lg font-bold">
+                    {selectedChar?.name[0]}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-epic-purple">{selectedChar?.name}</p>
+                    <p className="text-xs text-epic-purple/40">Character locked in — Visual DNA active</p>
+                  </div>
+                  <button
+                    onClick={() => setCurrentStep(1)}
+                    className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium"
+                  >
+                    Change
+                  </button>
                 </div>
-                <p className="text-sm text-epic-purple/40 font-medium">
-                  {t("prompt.emptyState")}
-                </p>
-                <p className="text-xs text-epic-purple/25 mt-1">
-                  {t("prompt.emptyHint")}
-                </p>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Word Library */}
+                  <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                      <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
+                        <ListChecks className="w-5 h-5 text-epic-blue" />
+                        Step 2: Pick Your Word
+                      </h2>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setShowCsvImport(!showCsvImport)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          Import CSV
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-5 space-y-4">
+                      {/* CSV Import */}
+                      {showCsvImport && (
+                        <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-4 space-y-3">
+                          <textarea
+                            value={csvImportText}
+                            onChange={(e) => setCsvImportText(e.target.value)}
+                            placeholder="Paste words separated by commas, semicolons, or new lines:&#10;far, high, open, close, near, run, jump..."
+                            rows={4}
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none"
+                          />
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={importCsv}
+                              disabled={!csvImportText.trim()}
+                              className="px-4 py-2 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90 disabled:opacity-40"
+                            >
+                              Import Words
+                            </button>
+                            <button
+                              onClick={() => { setShowCsvImport(false); setCsvImportText(""); }}
+                              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                              Cancel
+                            </button>
+                            {importResult && (
+                              <span className="text-xs text-epic-teal font-medium">
+                                Added {importResult.added} words, {importResult.duplicates} duplicates skipped
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tabs: Pending / Produced */}
+                      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+                        <button
+                          onClick={() => setWordTab("pending")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                            wordTab === "pending"
+                              ? "bg-white text-epic-purple shadow-sm"
+                              : "text-epic-purple/50 hover:text-epic-purple/70"
+                          }`}
+                        >
+                          <Clock className="w-4 h-4" />
+                          Pending
+                          <span className="bg-epic-pink/10 text-epic-pink text-xs font-bold px-2 py-0.5 rounded-full">
+                            {pendingWords.length}
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => setWordTab("produced")}
+                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                            wordTab === "produced"
+                              ? "bg-white text-epic-purple shadow-sm"
+                              : "text-epic-purple/50 hover:text-epic-purple/70"
+                          }`}
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          Produced
+                          <span className="bg-epic-teal/20 text-epic-purple text-xs font-bold px-2 py-0.5 rounded-full">
+                            {producedWords.length}
+                          </span>
+                        </button>
+                      </div>
+
+                      {/* Word grid */}
+                      {wordTab === "pending" && (
+                        <div className="space-y-2">
+                          {pendingWords.length === 0 ? (
+                            <div className="text-center py-8 text-sm text-epic-purple/30">
+                              No pending words. Add some below or import a CSV.
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {pendingWords.map((w) => (
+                                <button
+                                  key={w.id}
+                                  onClick={() => {
+                                    setSelectedWord(w.word);
+                                    setCurrentStep(3);
+                                  }}
+                                  className={`group relative px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                                    selectedWord === w.word
+                                      ? "bg-epic-pink text-white shadow-md shadow-epic-pink/20"
+                                      : "bg-gray-50 text-epic-purple hover:bg-epic-pink/10 hover:text-epic-pink border border-gray-100 hover:border-epic-pink/30"
+                                  }`}
+                                >
+                                  {w.word}
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteWordHandler(w.word);
+                                    }}
+                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                  >
+                                    ×
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {wordTab === "produced" && (
+                        <div className="space-y-2">
+                          {producedWords.length === 0 ? (
+                            <div className="text-center py-8 text-sm text-epic-purple/30">
+                              No produced words yet. Generate some scripts!
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-2">
+                              {producedWords.map((w) => (
+                                <span
+                                  key={w.id}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium bg-epic-teal/10 text-epic-teal border border-epic-teal/20"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  {w.word}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Add New Word panel */}
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100">
+                      <h3 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
+                        <Plus className="w-4 h-4 text-epic-pink" />
+                        Add New Word
+                      </h3>
+                    </div>
+                    <div className="p-5 space-y-4">
+                      <div>
+                        <input
+                          value={newWordInput}
+                          onChange={(e) => {
+                            setNewWordInput(e.target.value);
+                            checkDuplicate(e.target.value);
+                          }}
+                          onKeyDown={(e) => e.key === "Enter" && addNewWord()}
+                          placeholder="Type a word..."
+                          className={`w-full rounded-xl border px-4 py-3 text-lg font-bold text-epic-purple placeholder:text-gray-300 placeholder:font-normal focus:outline-none focus:ring-2 transition-all ${
+                            duplicateWarning
+                              ? "border-red-300 focus:ring-red-200 bg-red-50/50"
+                              : "border-gray-200 focus:ring-epic-blue/30"
+                          }`}
+                        />
+                        {duplicateWarning && (
+                          <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-medium">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            {duplicateWarning}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={addNewWord}
+                        disabled={!newWordInput.trim()}
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-4 py-3 text-white text-sm font-semibold hover:bg-epic-purple/90 transition-all disabled:opacity-40"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add to Pending
+                      </button>
+
+                      {/* Quick stats */}
+                      <div className="pt-4 border-t border-gray-100 space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-epic-purple/50">Total words</span>
+                          <span className="font-bold text-epic-purple">{words.length}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-epic-purple/50">Pending</span>
+                          <span className="font-bold text-epic-pink">{pendingWords.length}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-epic-purple/50">Produced</span>
+                          <span className="font-bold text-epic-teal">{producedWords.length}</span>
+                        </div>
+                        {words.length > 0 && (
+                          <div className="pt-2">
+                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-epic-teal rounded-full transition-all"
+                                style={{ width: `${(producedWords.length / words.length) * 100}%` }}
+                              />
+                            </div>
+                            <p className="text-xs text-epic-purple/40 mt-1 text-center">
+                              {Math.round((producedWords.length / words.length) * 100)}% complete
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ════════════════════════════════════════════════════════ */}
+            {/*  STEP 3: One-Click Generate                             */}
+            {/* ════════════════════════════════════════════════════════ */}
+            {currentStep === 3 && (
+              <div className="space-y-6">
+                {/* Context bar */}
+                <div className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-epic-purple flex items-center justify-center text-white text-sm font-bold">
+                      {selectedChar?.name[0]}
+                    </div>
+                    <span className="text-sm font-medium text-epic-purple">{selectedChar?.name}</span>
+                  </div>
+                  <div className="w-px h-6 bg-gray-200" />
+                  {selectedWord ? (
+                    <span className="inline-flex items-center px-4 py-1.5 rounded-lg bg-epic-pink/10 text-epic-pink font-bold text-lg">
+                      {selectedWord}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-epic-purple/40">No word selected</span>
+                  )}
+                  <div className="ml-auto flex gap-2">
+                    <button onClick={() => setCurrentStep(1)} className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium">
+                      Change Character
+                    </button>
+                    <button onClick={() => setCurrentStep(2)} className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium">
+                      Change Word
+                    </button>
+                  </div>
+                </div>
+
+                {/* Generate panel */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100">
+                    <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-epic-yellow" />
+                      Step 3: Generate Seedance Prompt
+                    </h2>
+                  </div>
+
+                  <div className="p-6 space-y-4">
+                    {/* Environment preview */}
+                    <div className="rounded-xl overflow-hidden border border-gray-100">
+                      <div className="h-24 bg-gradient-to-b from-[#E8E0F0] to-[#D4C8E2] flex items-center justify-center">
+                        <span className="text-4xl font-black text-epic-purple/20 tracking-widest">
+                          {selectedWord || "word"}
+                        </span>
+                      </div>
+                      <div className="h-12 bg-gradient-to-b from-[#E8D5B0] to-[#DCC9A0]" />
+                      <div className="px-4 py-2 bg-gray-50 text-xs text-epic-purple/40 text-center">
+                        Lavender wall + Tan floor — Hard-coded environment
+                      </div>
+                    </div>
+
+                    {/* Rules summary */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                        <p className="text-2xl font-bold text-epic-purple">15s</p>
+                        <p className="text-xs text-epic-purple/50">Duration</p>
+                      </div>
+                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                        <p className="text-2xl font-bold text-epic-purple">9:16</p>
+                        <p className="text-xs text-epic-purple/50">Vertical</p>
+                      </div>
+                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                        <p className="text-2xl font-bold text-epic-purple">Silent</p>
+                        <p className="text-xs text-epic-purple/50">Character</p>
+                      </div>
+                    </div>
+
+                    {error && (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        {error}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={generateScript}
+                      disabled={generating || !selectedWord}
+                      className="w-full flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                    >
+                      {generating ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Generating script for &ldquo;{selectedWord}&rdquo;...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-5 h-5" />
+                          Generate Seedance Prompt
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Generated Scripts ── */}
+                {scripts.length > 0 && (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                      <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
+                        <Wand2 className="w-4 h-4 text-epic-blue" />
+                        Generated Scripts
+                        <span className="text-xs font-normal text-epic-purple/40">
+                          ({scripts.length})
+                        </span>
+                      </h2>
+                    </div>
+
+                    <div className="divide-y divide-gray-50">
+                      {scripts.map((script) => (
+                        <div key={script.id}>
+                          {/* Row */}
+                          <div
+                            className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors cursor-pointer"
+                            onClick={() =>
+                              setExpandedScript(expandedScript === script.id ? null : script.id)
+                            }
+                          >
+                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">
+                              {script.word}
+                            </span>
+                            <span className="text-sm text-epic-purple/50">{script.characterName}</span>
+                            {script.colorCategory && (
+                              <span
+                                className="inline-block w-5 h-5 rounded-md border border-gray-200 flex-shrink-0"
+                                style={{ background: script.bgColor || "#EDE9FE" }}
+                                title={script.colorCategory}
+                              />
+                            )}
+                            <span className="text-sm text-epic-purple/40 truncate flex-1">
+                              {script.script.slice(0, 80)}...
+                            </span>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyScript(script);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
+                              >
+                                {copiedId === script.id ? (
+                                  <><Check className="w-3.5 h-3.5" /> Copied</>
+                                ) : (
+                                  <><Copy className="w-3.5 h-3.5" /> Copy</>
+                                )}
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteScriptHandler(script.id);
+                                }}
+                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                              {expandedScript === script.id ? (
+                                <ChevronUp className="w-4 h-4 text-gray-400" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-gray-400" />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expanded */}
+                          {expandedScript === script.id && (
+                            <div className="px-6 pb-5 bg-gray-50/30">
+                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                                {/* Script */}
+                                <div className="lg:col-span-2 space-y-3">
+                                  <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
+                                    Full Animation Script
+                                  </h4>
+                                  <div className="rounded-xl bg-white border border-gray-100 p-5 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono">
+                                    {script.script}
+                                  </div>
+                                </div>
+
+                                {/* Sidebar */}
+                                <div className="space-y-4">
+                                  {/* Narrator — separate copyable */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
+                                        Narrator Lines (Offscreen)
+                                      </h4>
+                                      <button
+                                        onClick={() => copyNarrator(script)}
+                                        className="flex items-center gap-1 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
+                                      >
+                                        {copiedId === `narrator-${script.id}` ? (
+                                          <><Check className="w-3 h-3" /> Copied</>
+                                        ) : (
+                                          <><Copy className="w-3 h-3" /> Copy Lines</>
+                                        )}
+                                      </button>
+                                    </div>
+                                    <div className="rounded-xl bg-white border border-epic-blue/20 p-4 space-y-2.5">
+                                      {script.narratorLines.map((nl, i) => (
+                                        <div key={i} className="flex gap-3 text-sm">
+                                          <span className="text-epic-blue font-mono font-medium shrink-0 w-12">
+                                            {nl.time}
+                                          </span>
+                                          <span className="text-epic-purple/70 italic">
+                                            &ldquo;{nl.line}&rdquo;
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {/* Negative prompt */}
+                                  <div>
+                                    <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider mb-2">
+                                      Negative Prompt (Safeguard)
+                                    </h4>
+                                    <div className="rounded-xl bg-red-50/50 border border-red-100/50 p-4 text-xs text-red-600/70 font-mono leading-relaxed">
+                                      {script.negativePrompt}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

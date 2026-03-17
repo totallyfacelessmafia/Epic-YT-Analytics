@@ -43,6 +43,7 @@ const translations: Record<string, Record<Locale, string>> = {
 
   // Upload Frequency
   "upload.title": { en: "Upload Frequency", zh: "上传频率" },
+  "upload.today": { en: "Today", zh: "今天" },
   "upload.thisWeek": { en: "This Week", zh: "本周" },
   "upload.lastWeek": { en: "Last Week", zh: "上周" },
   "upload.last30Days": { en: "Last 30 Days", zh: "过去30天" },

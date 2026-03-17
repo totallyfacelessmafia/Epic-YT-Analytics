@@ -69,9 +69,20 @@ function migrate(db: Database.Database) {
       created_at      INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
     );
 
+    CREATE TABLE IF NOT EXISTS words (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      word        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      character_id TEXT,
+      added_at    INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+      produced_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_scripts_word ON scripts(word);
     CREATE INDEX IF NOT EXISTS idx_scripts_character ON scripts(character_id);
     CREATE INDEX IF NOT EXISTS idx_metadata_drive ON metadata_history(drive_file_id);
+    CREATE INDEX IF NOT EXISTS idx_words_status ON words(status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_words_unique ON words(word);
   `);
 
   // Seed default Kitten Ninja character if not exists
@@ -235,4 +246,89 @@ export function updateMetadataUpload(
       "UPDATE metadata_history SET youtube_url = ?, youtube_id = ?, status = 'uploaded' WHERE drive_file_id = ? AND status = 'generated'"
     )
     .run(youtubeUrl, youtubeId, driveFileId);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Word Library CRUD                                                  */
+/* ------------------------------------------------------------------ */
+
+export interface DbWord {
+  id: number;
+  word: string;
+  status: string; // 'pending' | 'produced'
+  character_id: string | null;
+  added_at: number;
+  produced_at: number | null;
+}
+
+export function getAllWords(): DbWord[] {
+  return getDb().prepare("SELECT * FROM words ORDER BY status ASC, added_at DESC").all() as DbWord[];
+}
+
+export function getPendingWords(): DbWord[] {
+  return getDb().prepare("SELECT * FROM words WHERE status = 'pending' ORDER BY added_at ASC").all() as DbWord[];
+}
+
+export function getProducedWords(): DbWord[] {
+  return getDb().prepare("SELECT * FROM words WHERE status = 'produced' ORDER BY produced_at DESC").all() as DbWord[];
+}
+
+export function wordExists(word: string): boolean {
+  const row = getDb().prepare("SELECT id FROM words WHERE word = ? COLLATE NOCASE").get(word);
+  return !!row;
+}
+
+export function getWordStatus(word: string): DbWord | undefined {
+  return getDb().prepare("SELECT * FROM words WHERE word = ? COLLATE NOCASE").get(word) as DbWord | undefined;
+}
+
+export function addWord(word: string): DbWord | null {
+  const existing = getDb().prepare("SELECT * FROM words WHERE word = ? COLLATE NOCASE").get(word) as DbWord | undefined;
+  if (existing) return null; // duplicate
+  const now = Date.now();
+  const result = getDb()
+    .prepare("INSERT INTO words (word, status, added_at) VALUES (?, 'pending', ?)")
+    .run(word.toLowerCase().trim(), now);
+  return { id: result.lastInsertRowid as number, word: word.toLowerCase().trim(), status: "pending", character_id: null, added_at: now, produced_at: null };
+}
+
+export function addWordsFromCsv(words: string[]): { added: number; duplicates: number } {
+  let added = 0;
+  let duplicates = 0;
+  const insert = getDb().prepare("INSERT OR IGNORE INTO words (word, status, added_at) VALUES (?, 'pending', ?)");
+  const now = Date.now();
+
+  const tx = getDb().transaction(() => {
+    for (const w of words) {
+      const clean = w.toLowerCase().trim();
+      if (!clean) continue;
+      const result = insert.run(clean, now);
+      if (result.changes > 0) added++;
+      else duplicates++;
+    }
+  });
+  tx();
+  return { added, duplicates };
+}
+
+export function markWordProduced(word: string, characterId?: string): void {
+  getDb()
+    .prepare("UPDATE words SET status = 'produced', produced_at = ?, character_id = ? WHERE word = ? COLLATE NOCASE")
+    .run(Date.now(), characterId ?? null, word);
+}
+
+export function markWordPending(word: string): void {
+  getDb()
+    .prepare("UPDATE words SET status = 'pending', produced_at = NULL, character_id = NULL WHERE word = ? COLLATE NOCASE")
+    .run(word);
+}
+
+export function deleteWord(word: string): void {
+  getDb().prepare("DELETE FROM words WHERE word = ? COLLATE NOCASE").run(word);
+}
+
+/** Check if a script already exists for this word (regardless of word library) */
+export function scriptExistsForWord(word: string): boolean {
+  const row = getDb().prepare("SELECT id FROM scripts WHERE word = ? COLLATE NOCASE LIMIT 1").get(word);
+  return !!row;
 }

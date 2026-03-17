@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { Suspense, useState, useCallback, useEffect, useRef } from "react";
 import {
   Wand2,
   Copy,
@@ -23,7 +23,7 @@ import {
   ListChecks,
   Zap,
 } from "lucide-react";
-import { useLanguage } from "@/i18n/LanguageContext";
+import { LanguageProvider, useLanguage } from "@/i18n/LanguageContext";
 import Sidebar from "./Sidebar";
 import LanguageToggle from "./LanguageToggle";
 
@@ -72,6 +72,16 @@ interface WordEntry {
 /* ------------------------------------------------------------------ */
 
 export default function PromptEngine({ accessKey }: { accessKey: string }) {
+  return (
+    <LanguageProvider>
+      <Suspense>
+        <PromptEngineContent accessKey={accessKey} />
+      </Suspense>
+    </LanguageProvider>
+  );
+}
+
+function PromptEngineContent({ accessKey }: { accessKey: string }) {
   const { t } = useLanguage();
 
   const apiUrl = useCallback(

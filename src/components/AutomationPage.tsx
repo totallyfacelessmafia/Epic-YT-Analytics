@@ -93,7 +93,7 @@ function ProgressRing({ progress, size = 48 }: { progress: number; size?: number
 
 function AutomationContent({ accessKey }: { accessKey: string }) {
   const { t } = useLanguage();
-  const [folderId, setFolderId] = useState("");
+  const [folderId, setFolderId] = useState("1EHL7tCmbv2zY2bULeXBmfFhrP4qJhIjp");
   const [scanning, setScanning] = useState(false);
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [scanError, setScanError] = useState<string | null>(null);

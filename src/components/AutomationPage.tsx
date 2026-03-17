@@ -300,7 +300,27 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
   const readyCount = videos.filter(
     (v) => v.status === "ready" || v.status === "error"
   ).length;
+  const reviewCount = videos.filter((v) => v.status === "review").length;
   const doneCount = videos.filter((v) => v.status === "done").length;
+
+  // Upload all videos that have metadata ready
+  async function handleUploadAll() {
+    abortRef.current = false;
+    setBulkProcessing(true);
+    setBulkCurrent(0);
+    setShowSummary(false);
+
+    const reviewVideos = videos.filter((v) => v.status === "review");
+
+    for (let i = 0; i < reviewVideos.length; i++) {
+      if (abortRef.current) break;
+      setBulkCurrent(i + 1);
+      await uploadVideo(reviewVideos[i].id);
+    }
+
+    setBulkProcessing(false);
+    setShowSummary(true);
+  }
 
   function statusOverlay(video: VideoItem) {
     if (video.status === "done") {
@@ -423,6 +443,20 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                     {t("auto.bulkProgress")} {bulkCurrent} {t("auto.of")} {readyCount + doneCount > 0 ? videos.length : readyCount}
                   </span>
                 )}
+                {reviewCount > 0 && (
+                  <button
+                    onClick={handleUploadAll}
+                    disabled={bulkProcessing}
+                    className="inline-flex items-center gap-2 rounded-xl bg-epic-blue px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {bulkProcessing ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    Upload All ({reviewCount})
+                  </button>
+                )}
                 <button
                   onClick={handleProcessAll}
                   disabled={bulkProcessing || readyCount === 0}
@@ -438,218 +472,172 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
               </div>
             </div>
 
-            {/* Grid of Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* Video List — thumbnail left, metadata right */}
+            <div className="space-y-4">
               {videos.map((video) => (
                 <div
                   key={video.id}
                   className="rounded-2xl bg-white shadow-md border border-gray-100 overflow-hidden transition-all hover:shadow-lg"
                 >
-                  {/* Thumbnail Area */}
-                  <div className="relative aspect-video bg-gray-100">
-                    {video.thumbnail ? (
-                      <Image
-                        src={video.thumbnail}
-                        alt={video.name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-epic-blue/10 to-epic-purple/10">
-                        <Play className="h-10 w-10 text-epic-purple/20" />
+                  <div className="flex flex-col lg:flex-row">
+                    {/* Left: Thumbnail + Info */}
+                    <div className="lg:w-80 flex-shrink-0">
+                      <div className="relative aspect-video lg:h-full bg-gray-100">
+                        {video.thumbnail ? (
+                          <Image
+                            src={video.thumbnail}
+                            alt={video.name}
+                            fill
+                            className="object-cover"
+                            sizes="320px"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-epic-blue/10 to-epic-purple/10">
+                            <Play className="h-10 w-10 text-epic-purple/20" />
+                          </div>
+                        )}
+                        {statusOverlay(video)}
                       </div>
-                    )}
-                    {statusOverlay(video)}
-                  </div>
+                      <div className="p-4 space-y-3">
+                        <div>
+                          <p className="text-sm font-medium text-epic-purple truncate">
+                            {video.name}
+                          </p>
+                          <p className="text-xs text-epic-purple/50 font-georgia mt-0.5">
+                            {formatSize(video.size)}
+                          </p>
+                        </div>
 
-                  {/* Card Body */}
-                  <div className="p-4 space-y-3">
-                    <div>
-                      <p className="text-sm font-medium text-epic-purple truncate">
-                        {video.name}
-                      </p>
-                      <p className="text-xs text-epic-purple/50 font-georgia mt-0.5">
-                        {formatSize(video.size)}
-                      </p>
+                        {/* Action Buttons */}
+                        {video.status === "ready" && (
+                          <button
+                            onClick={() => handleGenerateSeo(video.id)}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-purple/90"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            {t("auto.generateSeo")}
+                          </button>
+                        )}
+
+                        {video.status === "generating" && (
+                          <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-epic-purple/60">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {t("auto.generating")}
+                          </div>
+                        )}
+
+                        {video.status === "review" && (
+                          <button
+                            onClick={() => handleUpload(video.id)}
+                            disabled={video.status !== "review"}
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-blue px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            {t("auto.confirmUpload")}
+                          </button>
+                        )}
+
+                        {video.status === "uploading" && (
+                          <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-epic-purple/60">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            {t("auto.uploading")}
+                          </div>
+                        )}
+
+                        {video.status === "done" && video.youtubeUrl && (
+                          <a
+                            href={video.youtubeUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-teal/20 px-4 py-2.5 text-sm font-medium text-epic-purple transition-all hover:bg-epic-teal/30"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            {t("auto.viewOnYt")}
+                          </a>
+                        )}
+
+                        {video.status === "error" && (
+                          <div className="space-y-2">
+                            <p className="text-xs text-epic-pink truncate">{video.error}</p>
+                            <button
+                              onClick={() => handleGenerateSeo(video.id)}
+                              className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-epic-pink/30 px-4 py-2 text-sm font-medium text-epic-pink transition-all hover:bg-epic-pink/5"
+                            >
+                              {t("auto.retry")}
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    {video.status === "ready" && (
-                      <button
-                        onClick={() => handleGenerateSeo(video.id)}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-purple/90"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {t("auto.generateSeo")}
-                      </button>
-                    )}
+                    {/* Right: Metadata (always visible when available) */}
+                    {(video.status === "review" || video.status === "done" || video.status === "uploading") && video.title && video.description && (
+                      <div className="flex-1 border-t lg:border-t-0 lg:border-l border-gray-100">
+                        <div className="p-5 space-y-4">
+                          {/* Editable Title */}
+                          <div>
+                            <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1">
+                              {t("auto.editTitle")}
+                            </label>
+                            <input
+                              type="text"
+                              value={video.title}
+                              onChange={(e) => updateVideoField(video.id, "title", e.target.value)}
+                              disabled={video.status !== "review"}
+                              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-epic-purple font-roboto focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue disabled:bg-gray-50 disabled:text-epic-purple/60"
+                            />
+                          </div>
 
-                    {video.status === "generating" && (
-                      <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-epic-purple/60">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {t("auto.generating")}
-                      </div>
-                    )}
+                          {/* Editable Description */}
+                          <div>
+                            <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1">
+                              {t("auto.editDescription")}
+                            </label>
+                            <textarea
+                              value={video.description}
+                              onChange={(e) => updateVideoField(video.id, "description", e.target.value)}
+                              disabled={video.status !== "review"}
+                              rows={6}
+                              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm text-epic-purple/80 font-georgia leading-relaxed focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue resize-y disabled:bg-gray-50 disabled:text-epic-purple/60"
+                            />
+                          </div>
 
-                    {video.status === "review" && (
-                      <button
-                        onClick={() => setEditingId(editingId === video.id ? null : video.id)}
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-blue px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {t("auto.previewMetadata")}
-                      </button>
-                    )}
+                          {/* Tags */}
+                          {video.tags && video.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5">
+                              {video.tags.map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="rounded-full bg-epic-blue/10 px-2.5 py-0.5 text-xs font-medium text-epic-blue"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
 
-                    {video.status === "uploading" && (
-                      <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-epic-purple/60">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        {t("auto.uploading")}
-                      </div>
-                    )}
-
-                    {video.status === "done" && video.youtubeUrl && (
-                      <a
-                        href={video.youtubeUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-epic-teal/20 px-4 py-2.5 text-sm font-medium text-epic-purple transition-all hover:bg-epic-teal/30"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        {t("auto.viewOnYt")}
-                      </a>
-                    )}
-
-                    {video.status === "error" && (
-                      <div className="space-y-2">
-                        <p className="text-xs text-epic-pink truncate">{video.error}</p>
-                        <button
-                          onClick={() => handleGenerateSeo(video.id)}
-                          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-epic-pink/30 px-4 py-2 text-sm font-medium text-epic-pink transition-all hover:bg-epic-pink/5"
-                        >
-                          {t("auto.retry")}
-                        </button>
+                          {/* SEO Strength + Badges */}
+                          <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                            <SeoStrengthMeter
+                              title={video.title}
+                              description={video.description}
+                              tags={video.tags ?? []}
+                            />
+                            <div className="flex items-center gap-2 text-xs text-epic-purple/50">
+                              <span className="rounded-full bg-epic-yellow/20 px-2 py-0.5 font-medium text-epic-purple">
+                                Education
+                              </span>
+                              <span>Unlisted</span>
+                              <span>Made for Kids</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-
-            {/* Edit Panel — Side by side preview */}
-            {editingId && (() => {
-              const video = videos.find((v) => v.id === editingId);
-              if (!video?.title || !video?.description) return null;
-              return (
-                <div className="rounded-2xl bg-white shadow-md border border-gray-100 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h3 className="text-lg font-bold text-epic-purple font-roboto">
-                      {t("auto.previewMetadata")}
-                    </h3>
-                    <span className="text-sm text-epic-purple/50 truncate max-w-xs">
-                      {video.name}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-100">
-                    {/* Edit Side */}
-                    <div className="p-6 space-y-4">
-                      <div>
-                        <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1.5">
-                          {t("auto.editTitle")}
-                        </label>
-                        <input
-                          type="text"
-                          value={video.title}
-                          onChange={(e) =>
-                            updateVideoField(video.id, "title", e.target.value)
-                          }
-                          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-epic-purple font-roboto focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-epic-purple/60 uppercase tracking-wider mb-1.5">
-                          {t("auto.editDescription")}
-                        </label>
-                        <textarea
-                          value={video.description}
-                          onChange={(e) =>
-                            updateVideoField(video.id, "description", e.target.value)
-                          }
-                          rows={8}
-                          className="w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-epic-purple/80 font-georgia leading-relaxed focus:outline-none focus:ring-2 focus:ring-epic-blue/30 focus:border-epic-blue resize-y"
-                        />
-                      </div>
-                      {video.tags && video.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {video.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-epic-blue/10 px-3 py-1 text-xs font-medium text-epic-blue"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Preview Side */}
-                    <div className="p-6 bg-gray-50/50 space-y-4">
-                      {/* SEO Strength Meter */}
-                      <SeoStrengthMeter
-                        title={video.title}
-                        description={video.description}
-                        tags={video.tags ?? []}
-                      />
-
-                      <p className="text-xs font-medium text-epic-purple/40 uppercase tracking-wider">
-                        YouTube Preview
-                      </p>
-                      <div className="rounded-xl bg-white border border-gray-200 p-5 space-y-3">
-                        <h4 className="text-base font-medium text-epic-purple leading-snug">
-                          {video.title}
-                        </h4>
-                        <div className="flex items-center gap-2 text-xs text-epic-purple/50">
-                          <span className="rounded-full bg-epic-yellow/20 px-2 py-0.5 font-medium text-epic-purple">
-                            Education
-                          </span>
-                          <span>Unlisted</span>
-                          <span>Made for Kids</span>
-                        </div>
-                        <p className="text-sm text-epic-purple/70 font-georgia leading-relaxed whitespace-pre-wrap">
-                          {video.description}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-                    <button
-                      onClick={() => setEditingId(null)}
-                      className="rounded-xl px-4 py-2 text-sm font-medium text-epic-purple/60 hover:text-epic-purple transition-colors"
-                    >
-                      {t("auto.cancel")}
-                    </button>
-                    <button
-                      onClick={() => handleUpload(video.id)}
-                      disabled={video.status === "uploading"}
-                      className="inline-flex items-center gap-2 rounded-xl bg-epic-blue px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90 disabled:opacity-50"
-                    >
-                      {video.status === "uploading" ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-                      {video.status === "uploading"
-                        ? t("auto.uploading")
-                        : t("auto.confirmUpload")}
-                    </button>
-                  </div>
-                </div>
-              );
-            })()}
           </div>
         )}
 

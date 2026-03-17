@@ -15,6 +15,8 @@ function createAuthClient() {
 export async function GET(request: NextRequest) {
   const key = request.nextUrl.searchParams.get("key");
   const contentFilter = request.nextUrl.searchParams.get("filter") || "all";
+  const daysParam = parseInt(request.nextUrl.searchParams.get("days") || "30", 10);
+  const days = [30, 60, 90].includes(daysParam) ? daysParam : 30;
 
   if (key !== process.env.DASHBOARD_ACCESS_KEY) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -47,15 +49,15 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const endDate = now.toISOString().split("T")[0];
 
-    // Last 30 days
-    const start30 = new Date(now);
-    start30.setDate(start30.getDate() - 30);
-    const startDate30 = start30.toISOString().split("T")[0];
+    // Current period (dynamic: 30/60/90 days)
+    const startCurrent = new Date(now);
+    startCurrent.setDate(startCurrent.getDate() - days);
+    const startDate30 = startCurrent.toISOString().split("T")[0];
 
-    // Previous 30 days (for comparison)
-    const start60 = new Date(now);
-    start60.setDate(start60.getDate() - 60);
-    const startDate60 = start60.toISOString().split("T")[0];
+    // Previous period (same length, for comparison)
+    const startPrevious = new Date(now);
+    startPrevious.setDate(startPrevious.getDate() - days * 2);
+    const startDate60 = startPrevious.toISOString().split("T")[0];
 
     // Fetch current period daily data, previous period totals, and top videos
     const [currentPeriod, previousPeriod, topVideosReport, searchTermsReport] = await Promise.all([
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
         startDate: startDate60,
         endDate: startDate30,
         metrics: "views,estimatedMinutesWatched,subscribersGained",
-      }),
+      }), // previous period for comparison
       youtubeAnalytics.reports.query({
         ids: `channel==${channelId}`,
         startDate: startDate30,
@@ -225,13 +227,13 @@ export async function GET(request: NextRequest) {
 
         // Stop paginating if the oldest item in this batch is older than 30 days
         const oldest = items[items.length - 1]?.publishedAt;
-        if (oldest && new Date(oldest) < start30) break;
+        if (oldest && new Date(oldest) < startCurrent) break;
       } while (nextPageToken);
 
       // Count total uploads by period
       for (const item of allItems) {
         const pubDate = new Date(item.publishedAt);
-        if (pubDate >= start30) uploadCounts.last30Days++;
+        if (pubDate >= startCurrent) uploadCounts.last30Days++;
         if (pubDate >= startOfThisWeek) uploadCounts.thisWeek++;
         if (pubDate >= startOfLastWeek && pubDate < startOfThisWeek) uploadCounts.lastWeek++;
       }
@@ -374,7 +376,7 @@ export async function GET(request: NextRequest) {
         const hourDayBuckets: Record<string, { totalViews: number; count: number }> = {};
 
         // Get video stats for recently published videos
-        const recentItems = allItems.filter((item) => new Date(item.publishedAt) >= start30 && item.videoId);
+        const recentItems = allItems.filter((item) => new Date(item.publishedAt) >= startCurrent && item.videoId);
         const recentIds = recentItems.map((i) => i.videoId);
 
         if (recentIds.length > 0) {
@@ -439,6 +441,7 @@ export async function GET(request: NextRequest) {
       ctrData,
       retentionData,
       postingHeatmap,
+      days,
     });
   } catch (error: unknown) {
     console.error("YouTube API error:", error);

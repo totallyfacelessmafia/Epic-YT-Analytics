@@ -82,7 +82,10 @@ interface AnalyticsData {
   ctrData: CtrVideo[];
   retentionData: RetentionVideo[];
   postingHeatmap: HeatmapCell[];
+  days: number;
 }
+
+type DateRange = 30 | 60 | 90;
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -111,15 +114,16 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [contentFilter, setContentFilter] = useState<ContentFilter>("all");
+  const [dateRange, setDateRange] = useState<DateRange>(30);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const fetchData = useCallback(
-    (filter: ContentFilter) => {
+    (filter: ContentFilter, days: DateRange = dateRange) => {
       setLoading(true);
       setError(null);
       fetch(
-        `/api/youtube?key=${encodeURIComponent(accessKey)}&filter=${filter}`
+        `/api/youtube?key=${encodeURIComponent(accessKey)}&filter=${filter}&days=${days}`
       )
         .then((res) => {
           if (!res.ok) throw new Error(t("error.fetchFailed"));
@@ -133,11 +137,15 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
   );
 
   useEffect(() => {
-    fetchData(contentFilter);
-  }, [contentFilter, fetchData]);
+    fetchData(contentFilter, dateRange);
+  }, [contentFilter, dateRange, fetchData]);
 
   const handleContentFilterChange = (filter: ContentFilter) => {
     setContentFilter(filter);
+  };
+
+  const handleDateRangeChange = (range: DateRange) => {
+    setDateRange(range);
   };
 
   const handleDownloadPdf = () => {
@@ -171,11 +179,27 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             </p>
           </div>
           <div className="flex items-center gap-4">
+            {/* Date Range Selector */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+              {([30, 60, 90] as DateRange[]).map((range) => (
+                <button
+                  key={range}
+                  onClick={() => handleDateRangeChange(range)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    dateRange === range
+                      ? "bg-white text-epic-purple shadow-sm"
+                      : "text-epic-purple/50 hover:text-epic-purple/70"
+                  }`}
+                >
+                  {range}d
+                </button>
+              ))}
+            </div>
             <LanguageToggle />
             <button
               onClick={handleDownloadPdf}
               disabled={pdfLoading || !data}
-              className="inline-flex items-center gap-2 rounded-xl bg-epic-blue px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 rounded-xl bg-epic-blue px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-epic-blue/90 disabled:opacity-50 disabled:cursor-not-allowed no-print"
             >
               <Download className="h-4 w-4" />
               {pdfLoading ? t("header.downloading") : t("header.download")}
@@ -218,19 +242,19 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
                 title={t("metrics.totalViews")}
                 value={formatNumber(data.totals.views)}
                 change={data.changes.views}
-                subtitle={t("metrics.vsLast30Days")}
+                subtitle={`vs previous ${dateRange} days`}
               />
               <MetricCard
                 title={t("metrics.watchTime")}
                 value={formatWatchTime(data.totals.watchTime)}
                 change={data.changes.watchTime}
-                subtitle={t("metrics.vsLast30Days")}
+                subtitle={`vs previous ${dateRange} days`}
               />
               <MetricCard
                 title={t("metrics.subscribersGained")}
                 value={formatNumber(data.totals.subscribers)}
                 change={data.changes.subscribers}
-                subtitle={t("metrics.vsLast30Days")}
+                subtitle={`vs previous ${dateRange} days`}
               />
             </div>
             <AnalyticsChart

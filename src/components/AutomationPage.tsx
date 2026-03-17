@@ -481,8 +481,8 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                 >
                   <div className="flex flex-col lg:flex-row">
                     {/* Left: Thumbnail + Info */}
-                    <div className="lg:w-80 flex-shrink-0">
-                      <div className="relative aspect-video lg:h-full bg-gray-100">
+                    <div className="lg:w-64 flex-shrink-0">
+                      <div className="relative aspect-video bg-gray-100">
                         {video.thumbnail ? (
                           <Image
                             src={video.thumbnail}

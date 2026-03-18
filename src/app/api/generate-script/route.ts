@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Anthropic from "@anthropic-ai/sdk";
 import { getColorMapping } from "@/lib/color-map";
 
 /* ------------------------------------------------------------------ */
@@ -37,9 +37,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!process.env.GEMINI_API_KEY) {
+  if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: "GEMINI_API_KEY not configured" },
+      { error: "ANTHROPIC_API_KEY not configured" },
       { status: 500 }
     );
   }
@@ -48,8 +48,7 @@ export async function POST(request: NextRequest) {
   const colorMapping = getColorMapping(word);
 
   try {
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const prompt = `You are an expert animation script writer for children's educational content. You write 15-second vertical (9:16) animation scripts for a "Word of the Day" series.
 
@@ -109,8 +108,13 @@ Return ONLY valid JSON in this exact format:
   "negativePrompt": "${NEGATIVE_PROMPT_BASE}"
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const message = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = message.content[0].type === "text" ? message.content[0].text : "";
     const cleaned = text
       .replace(/```json\n?/g, "")
       .replace(/```\n?/g, "")
@@ -132,7 +136,7 @@ Return ONLY valid JSON in this exact format:
 
     return NextResponse.json(script);
   } catch (error: unknown) {
-    console.error("Gemini script generation error:", error);
+    console.error("Script generation error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });
   }

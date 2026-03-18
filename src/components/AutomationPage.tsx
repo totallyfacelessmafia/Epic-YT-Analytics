@@ -598,13 +598,21 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                     {(video.status === "review" || video.status === "uploading") && video.title && (
                       <div className="lg:w-44 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-100 p-3">
                         {/* 9:16 Shorts Preview */}
-                        <div className="relative w-full rounded-xl overflow-hidden bg-gradient-to-b from-[#C8B8E0] via-[#C8B8E0] to-[#D4C5A0]" style={{ aspectRatio: "9/16" }}>
+                        <div className="relative w-full rounded-xl overflow-hidden" style={{ aspectRatio: "9/16" }}>
+                          {/* Actual Kitten Ninja cover image */}
+                          <Image
+                            src="/kitten-ninja-cover.png"
+                            alt="Kitten Ninja Cover"
+                            fill
+                            className="object-cover"
+                            sizes="176px"
+                          />
                           {/* YouTube top safe zone indicator */}
                           <div className="absolute top-0 left-0 right-0 h-[24%] bg-black/10 flex items-center justify-center">
                             <span className="text-[6px] text-white/50 font-roboto uppercase tracking-wider">YT UI Zone</span>
                           </div>
-                          {/* Word text — in safe zone */}
-                          <div className="absolute inset-0 flex items-center justify-center">
+                          {/* Word text — centered on the lavender wall area */}
+                          <div className="absolute top-[25%] left-0 right-0 h-[30%] flex items-center justify-center">
                             <span
                               className="text-2xl font-black lowercase tracking-wide"
                               style={{
@@ -620,12 +628,6 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                           <div className="absolute bottom-0 left-0 right-0 h-[24%] bg-black/10 flex items-center justify-center">
                             <span className="text-[6px] text-white/50 font-roboto uppercase tracking-wider">YT UI Zone</span>
                           </div>
-                          {/* Mini Kitten Ninja silhouette */}
-                          {video.thumbnail && (
-                            <div className="absolute bottom-[26%] left-1/2 -translate-x-1/2 w-12 h-12 rounded-full overflow-hidden border border-white/30">
-                              <Image src={video.thumbnail} alt="" fill className="object-cover" sizes="48px" />
-                            </div>
-                          )}
                         </div>
                         {/* Color Swatches */}
                         <div className="mt-2 space-y-1">

@@ -108,6 +108,11 @@ function ProductionContent({ accessKey }: { accessKey: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Date range filter
+  const [dateRange, setDateRange] = useState<number>(30);
+  const [customDays, setCustomDays] = useState<string>("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+
   // View mode
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -128,7 +133,7 @@ function ProductionContent({ accessKey }: { accessKey: string }) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(apiUrl("/api/production"))
+    fetch(apiUrl("/api/production") + `&days=${dateRange}`)
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -142,7 +147,7 @@ function ProductionContent({ accessKey }: { accessKey: string }) {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [apiUrl]);
+  }, [apiUrl, dateRange]);
 
   // Filtered videos
   const filteredVideos = statusFilter === "all"
@@ -289,6 +294,50 @@ function ProductionContent({ accessKey }: { accessKey: string }) {
                 Calendar
               </button>
             </div>
+            {/* Date range buttons */}
+            <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1">
+              {[30, 60, 90].map((d) => (
+                <button
+                  key={d}
+                  onClick={() => { setDateRange(d); setShowCustomInput(false); }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    dateRange === d && !showCustomInput ? "bg-white text-epic-purple shadow-sm" : "text-epic-purple/50"
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+              <button
+                onClick={() => setShowCustomInput(!showCustomInput)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  showCustomInput ? "bg-white text-epic-purple shadow-sm" : "text-epic-purple/50"
+                }`}
+              >
+                Custom
+              </button>
+            </div>
+            {showCustomInput && (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  value={customDays}
+                  onChange={(e) => setCustomDays(e.target.value)}
+                  placeholder="Days"
+                  min={1}
+                  max={365}
+                  className="w-20 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-epic-purple focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                />
+                <button
+                  onClick={() => {
+                    const val = parseInt(customDays, 10);
+                    if (val > 0 && val <= 365) setDateRange(val);
+                  }}
+                  className="rounded-lg bg-epic-blue px-3 py-1.5 text-xs font-medium text-white hover:bg-epic-blue/90"
+                >
+                  Go
+                </button>
+              </div>
+            )}
             <LanguageToggle />
           </div>
         </div>

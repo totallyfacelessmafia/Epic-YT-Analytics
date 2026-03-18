@@ -19,6 +19,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const daysParam = request.nextUrl.searchParams.get("days");
+  const days = daysParam ? parseInt(daysParam, 10) : 30;
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+
   try {
     const oauth2Client = createAuthClient();
     const youtube = google.youtube({ version: "v3", auth: oauth2Client });
@@ -49,14 +54,19 @@ export async function GET(request: NextRequest) {
         pageToken: nextPageToken,
       });
 
-      const ids = (playlistRes.data.items ?? [])
+      const items = playlistRes.data.items ?? [];
+      const ids = items
         .map((item) => item.snippet?.resourceId?.videoId)
         .filter(Boolean) as string[];
 
       allVideoIds = allVideoIds.concat(ids);
       nextPageToken = playlistRes.data.nextPageToken ?? undefined;
       pages++;
-    } while (nextPageToken && pages < 3); // Max 150 videos
+
+      // Stop paginating if oldest item in this batch is older than cutoff
+      const oldest = items[items.length - 1]?.snippet?.publishedAt;
+      if (oldest && new Date(oldest) < cutoffDate) break;
+    } while (nextPageToken && pages < 10); // Allow more pages for larger ranges
 
     // Fetch full video details in batches of 50
     interface VideoInfo {
@@ -129,8 +139,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Filter by date range (always include unlisted and scheduled regardless of date)
+    const filteredVideos = videos.filter((v) => {
+      if (v.status === "unlisted" || v.status === "scheduled") return true;
+      return new Date(v.publishedAt) >= cutoffDate;
+    });
+
     // Sort: scheduled first (by date), then unlisted, then published (newest first)
-    videos.sort((a, b) => {
+    filteredVideos.sort((a, b) => {
       const order = { scheduled: 0, unlisted: 1, published: 2, private: 3 };
       if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
       if (a.status === "scheduled" && b.status === "scheduled") {
@@ -141,18 +157,18 @@ export async function GET(request: NextRequest) {
 
     // Stats
     const stats = {
-      unlisted: videos.filter((v) => v.status === "unlisted").length,
-      scheduled: videos.filter((v) => v.status === "scheduled").length,
-      publishedThisMonth: videos.filter((v) => {
+      unlisted: filteredVideos.filter((v) => v.status === "unlisted").length,
+      scheduled: filteredVideos.filter((v) => v.status === "scheduled").length,
+      publishedThisMonth: filteredVideos.filter((v) => {
         if (v.status !== "published") return false;
         const pub = new Date(v.publishedAt);
         const now = new Date();
         return pub.getMonth() === now.getMonth() && pub.getFullYear() === now.getFullYear();
       }).length,
-      total: videos.length,
+      total: filteredVideos.length,
     };
 
-    return NextResponse.json({ videos, stats });
+    return NextResponse.json({ videos: filteredVideos, stats, days });
   } catch (error: unknown) {
     console.error("Production API error:", error);
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -270,9 +270,7 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
             {data.ctrData && data.ctrData.length > 0 && (
               <CtrTable data={data.ctrData} />
             )}
-            {data.retentionData && data.retentionData.length > 0 && (
-              <RetentionChart data={data.retentionData} />
-            )}
+            {/* Retention chart removed — skewed by ad traffic */}
             {data.postingHeatmap && data.postingHeatmap.length > 0 && (
               <PostingHeatmap data={data.postingHeatmap} />
             )}

@@ -45,7 +45,17 @@ interface VideoItem extends DriveFile {
   error?: string;
   progress?: number; // 0–100 for ring
   uploadedAt?: string; // ISO date string
+  textColor?: string; // hex color for word overlay text
 }
+
+/* Shorts-safe word text color options */
+const TEXT_COLOR_OPTIONS = [
+  { name: "Electric Lime", hex: "#00FF00", vibe: "Action words" },
+  { name: "Cyber Blue", hex: "#00F5FF", vibe: "Concept words" },
+  { name: "Rocket Red", hex: "#FF0000", vibe: "Alert words" },
+  { name: "White", hex: "#FFFFFF", vibe: "Default" },
+  { name: "Epic Yellow", hex: "#E6D02C", vibe: "Highlights" },
+];
 
 export default function AutomationPage({ accessKey }: { accessKey: string }) {
   return (
@@ -303,7 +313,13 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
     setShowSummary(true);
   }
 
-  function updateVideoField(videoId: string, field: "title" | "description", value: string) {
+  function extractWord(filename: string): string {
+    // Extract word from "stretch - word of the day.mp4" → "stretch"
+    const match = filename.match(/^([a-zA-Z]+)\s*[-–—]/);
+    return match ? match[1].toLowerCase() : filename.replace(/\.mp4$/i, "").toLowerCase();
+  }
+
+  function updateVideoField(videoId: string, field: "title" | "description" | "textColor", value: string) {
     setVideos((prev) =>
       prev.map((v) => (v.id === videoId ? { ...v, [field]: value } : v))
     );
@@ -577,6 +593,59 @@ function AutomationContent({ accessKey }: { accessKey: string }) {
                         )}
                       </div>
                     </div>
+
+                    {/* Center: Shorts Preview with Color Selector */}
+                    {(video.status === "review" || video.status === "uploading") && video.title && (
+                      <div className="lg:w-44 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-100 p-3">
+                        {/* 9:16 Shorts Preview */}
+                        <div className="relative w-full rounded-xl overflow-hidden bg-gradient-to-b from-[#C8B8E0] via-[#C8B8E0] to-[#D4C5A0]" style={{ aspectRatio: "9/16" }}>
+                          {/* YouTube top safe zone indicator */}
+                          <div className="absolute top-0 left-0 right-0 h-[24%] bg-black/10 flex items-center justify-center">
+                            <span className="text-[6px] text-white/50 font-roboto uppercase tracking-wider">YT UI Zone</span>
+                          </div>
+                          {/* Word text — in safe zone */}
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span
+                              className="text-2xl font-black lowercase tracking-wide"
+                              style={{
+                                color: video.textColor || "#FFFFFF",
+                                WebkitTextStroke: "1.5px black",
+                                textShadow: "2px 2px 4px rgba(0,0,0,0.5)",
+                              }}
+                            >
+                              {extractWord(video.name)}
+                            </span>
+                          </div>
+                          {/* YouTube bottom safe zone indicator */}
+                          <div className="absolute bottom-0 left-0 right-0 h-[24%] bg-black/10 flex items-center justify-center">
+                            <span className="text-[6px] text-white/50 font-roboto uppercase tracking-wider">YT UI Zone</span>
+                          </div>
+                          {/* Mini Kitten Ninja silhouette */}
+                          {video.thumbnail && (
+                            <div className="absolute bottom-[26%] left-1/2 -translate-x-1/2 w-12 h-12 rounded-full overflow-hidden border border-white/30">
+                              <Image src={video.thumbnail} alt="" fill className="object-cover" sizes="48px" />
+                            </div>
+                          )}
+                        </div>
+                        {/* Color Swatches */}
+                        <div className="mt-2 space-y-1">
+                          <p className="text-[9px] font-semibold text-epic-purple/60 uppercase tracking-wider">Word Color</p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {TEXT_COLOR_OPTIONS.map((c) => (
+                              <button
+                                key={c.hex}
+                                onClick={() => updateVideoField(video.id, "textColor", c.hex)}
+                                title={`${c.name} — ${c.vibe}`}
+                                className={`w-7 h-7 rounded-full border-2 transition-all hover:scale-110 ${
+                                  video.textColor === c.hex ? "border-epic-purple ring-2 ring-epic-purple/30 scale-110" : "border-gray-300"
+                                }`}
+                                style={{ backgroundColor: c.hex }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Right: Metadata */}
                     {(video.status === "review" || video.status === "uploading") && video.title && video.description && (

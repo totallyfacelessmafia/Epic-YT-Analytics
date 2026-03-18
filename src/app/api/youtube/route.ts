@@ -274,7 +274,8 @@ export async function GET(request: NextRequest) {
       watchTime: row[2] as number,
     }));
 
-    // ── NEW: CTR + Impressions per video ──
+    // ── OPTIONAL: CTR + Impressions per video ──
+    // These sections are wrapped in try/catch so core analytics still work if they fail
     let ctrData: { videoId: string; title: string; thumbnail: string; impressions: number; ctr: number; views: number; isShort: boolean }[] = [];
     try {
       const ctrReport = await youtubeAnalytics.reports.query({
@@ -380,6 +381,8 @@ export async function GET(request: NextRequest) {
         const recentIds = recentItems.map((i) => i.videoId);
 
         if (recentIds.length > 0) {
+          // Limit to 50 IDs to avoid API filter length limits
+          const limitedIds = recentIds.slice(0, 50);
           // Get view counts for these videos
           const viewsReport = await youtubeAnalytics.reports.query({
             ids: `channel==${channelId}`,
@@ -387,7 +390,7 @@ export async function GET(request: NextRequest) {
             endDate: endDate,
             metrics: "views",
             dimensions: "video",
-            filters: `video==${recentIds.join(",")}`,
+            filters: `video==${limitedIds.join(",")}`,
           });
 
           const viewsMap = new Map<string, number>();

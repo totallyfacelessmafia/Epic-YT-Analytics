@@ -125,15 +125,18 @@ function DashboardContent({ accessKey }: { accessKey: string }) {
       fetch(
         `/api/youtube?key=${encodeURIComponent(accessKey)}&filter=${filter}&days=${days}`
       )
-        .then((res) => {
-          if (!res.ok) throw new Error(t("error.fetchFailed"));
+        .then(async (res) => {
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.message || body.error || t("error.fetchFailed"));
+          }
           return res.json();
         })
         .then((d) => { setData(d); setLastUpdated(new Date()); })
         .catch((err) => setError(err.message))
         .finally(() => setLoading(false));
     },
-    [accessKey, t]
+    [accessKey, t, dateRange]
   );
 
   useEffect(() => {

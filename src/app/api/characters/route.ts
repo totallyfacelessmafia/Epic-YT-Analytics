@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const { getAllCharacters } = await import("@/lib/db");
 
-    const rows = getAllCharacters();
+    const rows = await getAllCharacters();
     const characters = rows.map((r) => ({
       id: r.id,
       name: r.name,
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       if (id === "kitten-ninja") {
         return NextResponse.json({ error: "Cannot delete default character" }, { status: 400 });
       }
-      removeCharacter(id);
+      await removeCharacter(id);
       return NextResponse.json({ ok: true });
     }
 
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       if (!id || !visualDna) {
         return NextResponse.json({ error: "id and visualDna required" }, { status: 400 });
       }
-      updateCharacter(id, visualDna);
+      await updateCharacter(id, visualDna);
       return NextResponse.json({ ok: true });
     }
 
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
     if (!id || !name || !visualDna) {
       return NextResponse.json({ error: "id, name, and visualDna required" }, { status: 400 });
     }
-    const char = createCharacter(id, name, visualDna);
+    const char = await createCharacter(id, name, visualDna);
     return NextResponse.json({
       character: { id: char.id, name: char.name, visualDna: char.visual_dna, createdAt: char.created_at },
     });

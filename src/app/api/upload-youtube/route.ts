@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     // Update database with upload info
     try {
       const { updateMetadataUpload } = await import("@/lib/db");
-      updateMetadataUpload(driveFileId, youtubeUrl, uploadRes.data.id!);
+      await updateMetadataUpload(driveFileId, youtubeUrl, uploadRes.data.id!);
     } catch (dbErr) {
       console.error("DB update error (non-fatal):", dbErr);
     }

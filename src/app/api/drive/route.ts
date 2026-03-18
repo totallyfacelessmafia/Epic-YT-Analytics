@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     let uploadedMap: Record<string, { youtube_url: string | null; youtube_id: string | null; title: string; description: string; tags: string; created_at: number }> = {};
     try {
       const { getAllMetadata } = await import("@/lib/db");
-      const allMetadata = getAllMetadata();
+      const allMetadata = await getAllMetadata();
       for (const m of allMetadata) {
         if (m.status === "uploaded" && m.drive_file_id) {
           uploadedMap[m.drive_file_id] = {

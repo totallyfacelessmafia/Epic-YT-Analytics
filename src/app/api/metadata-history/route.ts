@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const { getAllMetadata } = await import("@/lib/db");
-    const rows = getAllMetadata();
+    const rows = await getAllMetadata();
     const history = rows.map((r) => ({
       id: r.id,
       driveFileId: r.drive_file_id,
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     const { createMetadata, updateMetadataUpload } = await import("@/lib/db");
 
     if (body.action === "upload") {
-      updateMetadataUpload(body.driveFileId, body.youtubeUrl, body.youtubeId);
+      await updateMetadataUpload(body.driveFileId, body.youtubeUrl, body.youtubeId);
       return NextResponse.json({ ok: true });
     }
 
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "driveFileId, filename, and title required" }, { status: 400 });
     }
 
-    const entry = createMetadata({
+    const entry = await createMetadata({
       drive_file_id: body.driveFileId,
       filename: body.filename,
       title: body.title,

@@ -14,9 +14,9 @@ export async function GET(req: NextRequest) {
     const status = req.nextUrl.searchParams.get("status");
 
     let rows;
-    if (status === "pending") rows = getPendingWords();
-    else if (status === "produced") rows = getProducedWords();
-    else rows = getAllWords();
+    if (status === "pending") rows = await getPendingWords();
+    else if (status === "produced") rows = await getProducedWords();
+    else rows = await getAllWords();
 
     const words = rows.map((r) => ({
       id: r.id,
@@ -55,14 +55,14 @@ export async function POST(req: NextRequest) {
 
     // Seed Dolch/Fry kindergarten sight words
     if (body.action === "seed") {
-      const result = seedSightWords();
+      const result = await seedSightWords();
       return NextResponse.json(result);
     }
 
     // Get cross-reference data (scripted + uploaded words)
     if (body.action === "crossref") {
-      const scripted = getScriptedWords();
-      const uploaded = getUploadedWordsList();
+      const scripted = await getScriptedWords();
+      const uploaded = await getUploadedWordsList();
       return NextResponse.json({ scripted, uploaded });
     }
 
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     if (body.action === "check") {
       const word = (body.word || "").toLowerCase().trim();
       if (!word) return NextResponse.json({ error: "word required" }, { status: 400 });
-      const hasScript = scriptExistsForWord(word);
+      const hasScript = await scriptExistsForWord(word);
       return NextResponse.json({ word, hasScript });
     }
 
@@ -85,25 +85,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "No words provided" }, { status: 400 });
       }
 
-      const result = addWordsFromCsv(rawWords);
+      const result = await addWordsFromCsv(rawWords);
       return NextResponse.json(result);
     }
 
     // Mark a word as produced
     if (body.action === "produce") {
-      markWordProduced(body.word, body.characterId);
+      await markWordProduced(body.word, body.characterId);
       return NextResponse.json({ ok: true });
     }
 
     // Mark a word back to pending
     if (body.action === "unproduce") {
-      markWordPending(body.word);
+      await markWordPending(body.word);
       return NextResponse.json({ ok: true });
     }
 
     // Delete a word
     if (body.action === "delete") {
-      deleteWord(body.word);
+      await deleteWord(body.word);
       return NextResponse.json({ ok: true });
     }
 
@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     const word = (body.word || "").toLowerCase().trim();
     if (!word) return NextResponse.json({ error: "word required" }, { status: 400 });
 
-    const result = addWord(word);
+    const result = await addWord(word);
     if (!result) {
       return NextResponse.json({ error: "duplicate", message: `"${word}" already exists in the word library!` }, { status: 409 });
     }

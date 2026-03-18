@@ -93,7 +93,7 @@ Return ONLY valid JSON in this exact format:
     if (driveFileId) {
       try {
         const { createMetadata } = await import("@/lib/db");
-        createMetadata({
+        await createMetadata({
           drive_file_id: driveFileId,
           filename,
           title: metadata.title,

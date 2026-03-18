@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const { getAllScripts } = await import("@/lib/db");
 
-    const rows = getAllScripts();
+    const rows = await getAllScripts();
     const scripts = rows.map((r) => ({
       id: r.id,
       word: r.word,
@@ -43,12 +43,12 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     if (body.action === "delete") {
-      deleteScript(body.id);
+      await deleteScript(body.id);
       return NextResponse.json({ ok: true });
     }
 
     if (body.action === "clear") {
-      clearAllScripts();
+      await clearAllScripts();
       return NextResponse.json({ ok: true });
     }
 
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "script data required" }, { status: 400 });
     }
 
-    createScript({
+    await createScript({
       id: s.id,
       word: s.word,
       character_id: s.characterId,

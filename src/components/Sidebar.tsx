@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BarChart3, Clapperboard, Scroll, History } from "lucide-react";
+import { BarChart3, Clapperboard, Scroll, Film } from "lucide-react";
 import { useLanguage } from "@/i18n/LanguageContext";
 
 export default function Sidebar() {
@@ -29,6 +29,12 @@ export default function Sidebar() {
       label: t("nav.promptEngine") ?? "Prompt Engine",
       icon: Scroll,
       active: pathname === "/prompt-engine",
+    },
+    {
+      href: `/production?key=${encodeURIComponent(keyParam)}`,
+      label: "Production",
+      icon: Film,
+      active: pathname === "/production",
     },
   ];
 

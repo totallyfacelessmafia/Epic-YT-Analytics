@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ words });
   } catch (err) {
     console.error("GET /api/words error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: String(err instanceof Error ? err.message : err) }, { status: 500 });
   }
 }
 
@@ -121,6 +121,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("POST /api/words error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: String(err instanceof Error ? err.message : err) }, { status: 500 });
   }
 }

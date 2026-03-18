@@ -245,8 +245,9 @@ export async function GET(request: NextRequest) {
 
       if (recentVideoIds.length > 0) {
         // Fetch in batches of 50
+        // Use 24-hour window instead of midnight UTC to handle timezone differences
         const today = new Date(now);
-        today.setHours(0, 0, 0, 0);
+        today.setHours(today.getHours() - 24);
 
         for (let i = 0; i < recentVideoIds.length; i += 50) {
           const batch = recentVideoIds.slice(i, i + 50);

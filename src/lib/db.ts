@@ -1,4 +1,4 @@
-import { createClient, type Client, type InStatement } from "@libsql/client";
+import { createClient, type Client, type InStatement } from "@libsql/client/web";
 
 /* ------------------------------------------------------------------ */
 /*  Singleton database connection                                      */

@@ -88,7 +88,7 @@ async function ensureMigrated(): Promise<Client> {
         `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim and a red/coral ninja mask on his face.
 EYES: MUST be two small solid black dots ONLY. No eyebrows, no eyelashes, no white sclera, no blinking.
 MOUTH: MUST be a simple open happy "u" shape. It is a static black outline. No tongue, no teeth, no movement.
-PAWS: Round pink pads with NO claws.
+PAWS: Simple round paws. NO claws, NO detailed toe beans.
 STYLE: 2D clean-line cartoon. No realistic fur, no shading gradients, no 3D rendering. Flat colors only.
 PERSONALITY: Brave but clumsy. Tries hard to be cool but always has a small comedic fail.`,
         Date.now(),

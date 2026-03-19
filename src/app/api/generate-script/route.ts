@@ -50,56 +50,47 @@ export async function POST(request: NextRequest) {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const prompt = `You are an expert animation script writer for children's educational content. You write 15-second vertical (9:16) animation scripts for a "Word of the Day" series.
+    const colorName = textColor || 'green';
 
-CHARACTER: ${characterName}
-VISUAL DNA (strict rules — never deviate):
-${visualDna}
+    const prompt = `You are an expert animation script writer for children's educational Shorts. You write single continuous 15-second vertical 9:16 animation prompts for a "Word of the Day" series starring ${characterName}.
 
-CRITICAL SILENT CHARACTER RULE:
-${characterName} NEVER speaks. ${characterName} is completely silent — no dialogue, no speech bubbles, no talking.
-Only the OFFSCREEN NARRATOR has spoken lines. ${characterName} communicates ONLY through physical actions, gestures, and facial expressions (within the Visual DNA constraints — remember: static mouth, dot eyes).
+Your prompts are HIGHLY SPECIFIC and VISUAL — you describe exact props, exact movements, exact sound effects, and exact choreography. Think like a Pixar storyboard artist writing for preschoolers.
 
-ENVIRONMENT (hard-coded — do NOT change):
-${STANDARD_BACKGROUND}
+REFERENCE EXAMPLE (for the word "catch"):
+"The word catch is visible on the lavender wall. Kitten Ninja stands ready on the tan floor, arms outstretched like he's waiting for a hug. A soft 'Whirr' sound plays as a large, bright pink frosted donut with sprinkles floats into the frame from the left like a frisbee. The narrator says: 'Today's word of the day is... catch!'
 
-WORD: "${word}"
+Kitten Ninja gets a determined look (tilted head). He tracks the donut with his dot eyes. Just as the donut reaches him, he leaps into the air and 'catches' it. However, instead of grabbing it with his paws, the donut lands perfectly around his middle like a hula hoop! A 'Slide-whistle' sound plays as he spins around once in the air. The narrator says: 'Got it! Kitten Ninja can really catch!'
 
-Write a complete 15-second animation script following this EXACT structure:
+Kitten Ninja lands on his feet with the donut still around his waist. He looks down at his new 'donut belt' and gives a big thumbs up to the camera.
 
-1. FRAME 1 — THE HOOK (0-3s):
-   - ${characterName} enters the 9:16 vertical frame.
-   - The word "${word}" MUST be displayed on the lavender wall in large, bold, all lowercase ${textColor || 'green'} letters with a thick black outline/stroke for readability.
-   - The character strikes an attention-grabbing pose.
+FINALE: Kitten Ninja strikes a heroic pose. The word catch pulses with a soft, sugary pink glow. Tiny sprinkle icons and white stars rain down. The narrator says: 'Nice hands! That is catch!'"
 
-2. THE ACTION (3-10s):
-   - ${characterName} performs a "Ninja Mission" that CLEARLY demonstrates the meaning of "${word}".
-   - The character interacts with a PHYSICAL OBJECT related to the word.
-   - The action must be exaggerated, fun, and unmistakably tied to the word's definition.
-   - Include squash-and-stretch cartoon physics.
-   - Remember: ${characterName} is SILENT — all expression is through body language.
+NOW WRITE A PROMPT LIKE THIS FOR THE WORD "${word}".
 
-3. THE FAIL/GAG (10-13s):
-   - The mission ends with a small "ninja-fail" or humorous moment.
-   - Examples: trying to look cool but tripping, a butterfly landing on their nose, accidentally launching themselves, a prop falling on their head.
-   - Keep it gentle and funny — appropriate for preschool/kindergarten viewers.
+STRICT RULES:
+- CHARACTER: ${characterName} — ${visualDna}
+- KITTEN NINJA DOES NOT SPEAK. Ever. No dialogue, no speech bubbles, no lip-syncing.
+- EYES: Solid black dots only. No blinking, no white in the eyes.
+- MOUTH: Static "u" shaped sticker. NO movement.
+- ENVIRONMENT: Lavender wall (top half) and tan floor (bottom half). NOTHING ELSE.
+- The word "${word}" is displayed on the lavender wall in all lowercase ${colorName} letters. No capital letters.
+- NO on-screen captions or subtitles. The ONLY visual text is the word "${word}" on the wall.
+- NO sharp objects, swords, or weapons. Keep it safe for preschool/kindergarten.
+- Include specific SOUND EFFECTS (whoosh, boing, slide-whistle, etc.)
+- The PROP must be a specific, colorful, fun object that relates to the word — not generic.
+- The NARRATOR lines must be playful and kid-friendly, with a fun closing pun or wordplay.
 
-4. FINALE (13-15s):
-   - ${characterName} gives a thumbs up to the physical object.
-   - The word "${word}" pulses or glows in ${textColor || 'green'} on the lavender wall.
-   - ${characterName} strikes a heroic pose. Colorful confetti or stars celebrate.
-
-NARRATOR LINES (offscreen narrator ONLY — the character NEVER speaks):
+NARRATOR LINES (offscreen only):
 - Line 1 (0s): "Today's word of the day is... ${word}!"
-- Line 2 (~6s): A setup/encouragement line about the action.
-- Line 3 (~13s): A closing celebration line reinforcing the word.
+- Line 2 (~6s): A fun encouragement/setup line about the action.
+- Line 3 (~13s): A playful closing line with a pun or wordplay using "${word}".
 
 Return ONLY valid JSON in this exact format:
 {
   "word": "${word}",
   "setting": "Lavender Dojo",
   "background": "${STANDARD_BACKGROUND}",
-  "script": "The complete animation script as a single string with paragraph breaks as \\n\\n. Under 400 words.",
+  "script": "The complete animation prompt as a single continuous paragraph. Be SPECIFIC about props, movements, sounds, and choreography. Under 400 words.",
   "narratorLines": [
     {"time": "0s", "line": "Today's word of the day is... ${word}!"},
     {"time": "~6s", "line": "..."},

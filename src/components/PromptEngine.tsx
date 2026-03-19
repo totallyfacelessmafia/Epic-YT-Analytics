@@ -74,7 +74,7 @@ interface WordEntry {
 const DEFAULT_KITTEN_NINJA: CharacterProfile = {
   id: "kitten-ninja",
   name: "Kitten Ninja",
-  visualDna: `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim, a red/coral ninja mask on his face, and a red/coral scarf around his neck.
+  visualDna: `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim and a red/coral ninja mask on his face.
 EYES: MUST be two small solid black dots ONLY. No eyebrows, no eyelashes, no white sclera, no blinking.
 MOUTH: MUST be a simple open happy "u" shape. It is a static black outline. No tongue, no teeth, no movement.
 PAWS: Round pink pads with NO claws.
@@ -135,6 +135,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState("");
+  const [textColor, setTextColor] = useState("green");
 
   // Cross-reference
   const [uploadedWords, setUploadedWords] = useState<string[]>([]);
@@ -346,6 +347,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
           word,
           characterName: selectedChar.name,
           visualDna: selectedChar.visualDna,
+          textColor,
         }),
       });
 
@@ -1073,16 +1075,45 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                   </div>
 
                   <div className="p-6 space-y-4">
-                    {/* Environment preview */}
+                    {/* Shorts Preview with Kitten Ninja cover */}
                     <div className="rounded-xl overflow-hidden border border-gray-100">
-                      <div className="h-24 bg-gradient-to-b from-[#E8E0F0] to-[#D4C8E2] flex items-center justify-center">
-                        <span className="text-4xl font-black text-epic-purple/20 tracking-widest">
-                          {selectedWord || "word"}
-                        </span>
+                      <div className="relative w-full" style={{ aspectRatio: "9/16", maxHeight: "320px" }}>
+                        <img
+                          src="/kitten-ninja-cover.png"
+                          alt="Kitten Ninja cover"
+                          className="absolute inset-0 w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 flex items-start justify-center pt-[15%]">
+                          <span
+                            className="text-5xl font-black lowercase"
+                            style={{
+                              color: textColor === "green" ? "#00FF00" : textColor === "blue" ? "#00F5FF" : textColor === "red" ? "#FF0000" : textColor === "white" ? "#FFFFFF" : "#E6D02C",
+                              WebkitTextStroke: "2px black",
+                              paintOrder: "stroke fill",
+                            }}
+                          >
+                            {selectedWord || "word"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="h-12 bg-gradient-to-b from-[#E8D5B0] to-[#DCC9A0]" />
-                      <div className="px-4 py-2 bg-gray-50 text-xs text-epic-purple/40 text-center">
-                        Lavender wall + Tan floor — Hard-coded environment
+                      {/* Color picker */}
+                      <div className="flex items-center justify-center gap-3 px-4 py-3 bg-gray-50">
+                        <span className="text-xs text-epic-purple/50 mr-2">Text Color:</span>
+                        {[
+                          { name: "green", hex: "#00FF00", label: "Electric Lime" },
+                          { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
+                          { name: "red", hex: "#FF0000", label: "Rocket Red" },
+                          { name: "white", hex: "#FFFFFF", label: "White" },
+                          { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
+                        ].map((c) => (
+                          <button
+                            key={c.name}
+                            title={c.label}
+                            onClick={() => setTextColor(c.name)}
+                            className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
+                            style={{ backgroundColor: c.hex }}
+                          />
+                        ))}
                       </div>
                     </div>
 

@@ -85,7 +85,7 @@ async function ensureMigrated(): Promise<Client> {
     args: [
         "kitten-ninja",
         "Kitten Ninja",
-        `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim, a red/coral ninja mask on his face, and a red/coral scarf around his neck.
+        `Kitten Ninja is a cute chibi-style grey cat wearing a black ninja gi uniform with red/coral trim and a red/coral ninja mask on his face.
 EYES: MUST be two small solid black dots ONLY. No eyebrows, no eyelashes, no white sclera, no blinking.
 MOUTH: MUST be a simple open happy "u" shape. It is a static black outline. No tongue, no teeth, no movement.
 PAWS: Round pink pads with NO claws.

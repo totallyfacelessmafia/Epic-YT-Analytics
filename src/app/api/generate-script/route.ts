@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const { word, characterName, visualDna } = await request.json();
+  const { word, characterName, visualDna, textColor } = await request.json();
 
   if (!word || !characterName || !visualDna) {
     return NextResponse.json(
@@ -69,7 +69,7 @@ Write a complete 15-second animation script following this EXACT structure:
 
 1. FRAME 1 — THE HOOK (0-3s):
    - ${characterName} enters the 9:16 vertical frame.
-   - The word "${word}" MUST be displayed on the lavender wall in large, bold, all lowercase letters with clean black outlines.
+   - The word "${word}" MUST be displayed on the lavender wall in large, bold, all lowercase ${textColor || 'green'} letters with a thick black outline/stroke for readability.
    - The character strikes an attention-grabbing pose.
 
 2. THE ACTION (3-10s):
@@ -86,7 +86,7 @@ Write a complete 15-second animation script following this EXACT structure:
 
 4. FINALE (13-15s):
    - ${characterName} gives a thumbs up to the physical object.
-   - The word "${word}" pulses or glows on the lavender wall.
+   - The word "${word}" pulses or glows in ${textColor || 'green'} on the lavender wall.
    - ${characterName} strikes a heroic pose. Colorful confetti or stars celebrate.
 
 NARRATOR LINES (offscreen narrator ONLY — the character NEVER speaks):

@@ -136,8 +136,6 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState("");
   const [textColor, setTextColor] = useState("green");
-  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
-
   const getHexColor = (name: string) =>
     name === "green" ? "#00FF00" : name === "blue" ? "#00F5FF" : name === "red" ? "#FF0000" : name === "white" ? "#FFFFFF" : "#E6D02C";
 
@@ -1141,7 +1139,7 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                       <div className="space-y-4">
                         {/* Word Color Preview */}
                         <div className="rounded-xl overflow-hidden border border-gray-100">
-                          <div className="relative w-full" style={{ aspectRatio: "9/16" }}>
+                          <div className="relative w-48" style={{ aspectRatio: "9/16" }}>
                             <img
                               src="/kitten-ninja-cover.png"
                               alt="Kitten Ninja cover"

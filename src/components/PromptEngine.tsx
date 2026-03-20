@@ -1067,128 +1067,187 @@ NEGATIVE PROMPT: ${s.negativePrompt}
 
                 {/* Generate panel */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100">
+                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                     <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
                       <Zap className="w-5 h-5 text-epic-yellow" />
                       Step 3: Generate Seedance Prompt
                     </h2>
-                  </div>
-
-                  <div className="p-6 space-y-4">
-                    {/* Shorts Preview with Kitten Ninja cover */}
-                    <div className="rounded-xl overflow-hidden border border-gray-100">
-                      <div className="relative w-full" style={{ aspectRatio: "9/16", maxHeight: "320px" }}>
-                        <img
-                          src="/kitten-ninja-cover.png"
-                          alt="Kitten Ninja cover"
-                          className="absolute inset-0 w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 flex items-start justify-center pt-[15%]">
-                          <span
-                            className="text-5xl font-black lowercase"
-                            style={{
-                              color: textColor === "green" ? "#00FF00" : textColor === "blue" ? "#00F5FF" : textColor === "red" ? "#FF0000" : textColor === "white" ? "#FFFFFF" : "#E6D02C",
-                              WebkitTextStroke: "2px black",
-                              paintOrder: "stroke fill",
-                            }}
-                          >
-                            {selectedWord || "word"}
-                          </span>
-                        </div>
-                      </div>
-                      {/* Color picker */}
-                      <div className="flex items-center justify-center gap-3 px-4 py-3 bg-gray-50">
-                        <span className="text-xs text-epic-purple/50 mr-2">Text Color:</span>
-                        {[
-                          { name: "green", hex: "#00FF00", label: "Electric Lime" },
-                          { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
-                          { name: "red", hex: "#FF0000", label: "Rocket Red" },
-                          { name: "white", hex: "#FFFFFF", label: "White" },
-                          { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
-                        ].map((c) => (
-                          <button
-                            key={c.name}
-                            title={c.label}
-                            onClick={() => setTextColor(c.name)}
-                            className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
-                            style={{ backgroundColor: c.hex }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Rules summary */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                        <p className="text-2xl font-bold text-epic-purple">15s</p>
-                        <p className="text-xs text-epic-purple/50">Duration</p>
-                      </div>
-                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                        <p className="text-2xl font-bold text-epic-purple">9:16</p>
-                        <p className="text-xs text-epic-purple/50">Vertical</p>
-                      </div>
-                      <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                        <p className="text-2xl font-bold text-epic-purple">Silent</p>
-                        <p className="text-xs text-epic-purple/50">Character</p>
-                      </div>
-                    </div>
-
-                    {error && (
-                      <div className="flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
-                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        {error}
-                      </div>
-                    )}
-
-                    <div className="flex gap-3">
-                      <button
-                        onClick={generateScript}
-                        disabled={generating || batchGenerating || !selectedWord}
-                        className="flex-1 flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                      >
-                        {generating ? (
-                          <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
-                            Generating &ldquo;{selectedWord}&rdquo;...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-5 h-5" />
-                            Generate Seedance Prompt
-                          </>
-                        )}
-                      </button>
-
+                    <div className="flex items-center gap-2">
                       {pendingWords.length > 0 && (
                         <button
                           onClick={batchGenerateAll}
                           disabled={generating || batchGenerating || pendingWords.length === 0}
-                          className="flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-5 py-4 text-white font-bold text-sm shadow-lg hover:bg-epic-purple/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                          className="flex items-center gap-2 rounded-lg bg-epic-purple px-4 py-2 text-white font-bold text-sm hover:bg-epic-purple/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           {batchGenerating ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              {batchProgress.current}/{batchProgress.total}
-                            </>
+                            <><Loader2 className="w-4 h-4 animate-spin" /> {batchProgress.current}/{batchProgress.total}</>
                           ) : (
-                            <>
-                              <Zap className="w-4 h-4" />
-                              Batch All ({pendingWords.length})
-                            </>
+                            <><Zap className="w-4 h-4" /> Batch All ({pendingWords.length})</>
                           )}
                         </button>
                       )}
                     </div>
                   </div>
+
+                  {error && (
+                    <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      {error}
+                    </div>
+                  )}
+
+                  {/* Two-column Creation Portal layout */}
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* LEFT: Preview + Controls */}
+                      <div className="space-y-4">
+                        {/* Word Color Preview */}
+                        <div className="rounded-xl overflow-hidden border border-gray-100">
+                          <div className="relative w-full" style={{ aspectRatio: "9/16", maxHeight: "400px" }}>
+                            <img
+                              src="/kitten-ninja-cover.png"
+                              alt="Kitten Ninja cover"
+                              className="absolute inset-0 w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 flex items-start justify-center pt-[15%]">
+                              <span
+                                className="text-6xl font-black lowercase"
+                                style={{
+                                  color: textColor === "green" ? "#00FF00" : textColor === "blue" ? "#00F5FF" : textColor === "red" ? "#FF0000" : textColor === "white" ? "#FFFFFF" : "#E6D02C",
+                                  WebkitTextStroke: "2px black",
+                                  paintOrder: "stroke fill",
+                                }}
+                              >
+                                {selectedWord || "word"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-center gap-3 px-4 py-3 bg-gray-50">
+                            <span className="text-xs text-epic-purple/50 mr-2">Text Color:</span>
+                            {[
+                              { name: "green", hex: "#00FF00", label: "Electric Lime" },
+                              { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
+                              { name: "red", hex: "#FF0000", label: "Rocket Red" },
+                              { name: "white", hex: "#FFFFFF", label: "White" },
+                              { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
+                            ].map((c) => (
+                              <button
+                                key={c.name}
+                                title={c.label}
+                                onClick={() => setTextColor(c.name)}
+                                className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
+                                style={{ backgroundColor: c.hex }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Rules summary */}
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                            <p className="text-xl font-bold text-epic-purple">15s</p>
+                            <p className="text-xs text-epic-purple/50">Duration</p>
+                          </div>
+                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                            <p className="text-xl font-bold text-epic-purple">9:16</p>
+                            <p className="text-xs text-epic-purple/50">Vertical</p>
+                          </div>
+                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
+                            <p className="text-xl font-bold text-epic-purple">Silent</p>
+                            <p className="text-xs text-epic-purple/50">Character</p>
+                          </div>
+                        </div>
+
+                        {/* Generate button */}
+                        <button
+                          onClick={generateScript}
+                          disabled={generating || batchGenerating || !selectedWord}
+                          className="w-full flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                        >
+                          {generating ? (
+                            <><Loader2 className="w-5 h-5 animate-spin" /> Generating &ldquo;{selectedWord}&rdquo;...</>
+                          ) : (
+                            <><Sparkles className="w-5 h-5" /> Generate Seedance Prompt</>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* RIGHT: Script Output */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold text-epic-purple">Video Script</h3>
+                          <p className="text-xs text-epic-purple/40">This becomes the full Seedance prompt</p>
+                        </div>
+
+                        {/* Show latest script or placeholder */}
+                        {scripts.length > 0 ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm">
+                                  {scripts[0].word}
+                                </span>
+                                {(() => {
+                                  const wc = wordCount(scripts[0].script);
+                                  const over = wc > 400;
+                                  return (
+                                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
+                                      {wc}/400w
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => copyScript(scripts[0])}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
+                                >
+                                  {copiedId === scripts[0].id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="rounded-xl bg-white border border-gray-200 p-4 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono max-h-[340px] overflow-y-auto">
+                              {scripts[0].script}
+                            </div>
+                            {/* Narrator lines */}
+                            {scripts[0].narratorLines && scripts[0].narratorLines.length > 0 && (
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">Narrator Lines</h4>
+                                <div className="space-y-1">
+                                  {scripts[0].narratorLines.map((nl: NarratorLine, i: number) => (
+                                    <div key={i} className="flex gap-3 items-start text-sm">
+                                      <span className="text-xs font-mono text-epic-blue bg-epic-blue/10 px-2 py-0.5 rounded flex-shrink-0">{nl.time}</span>
+                                      <span className="text-epic-purple/70 italic font-georgia">&ldquo;{nl.line}&rdquo;</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Negative prompt */}
+                            {scripts[0].negativePrompt && (
+                              <div className="space-y-1">
+                                <h4 className="text-xs font-semibold text-red-400/80 uppercase tracking-wider">Negative Prompt (Safeguard)</h4>
+                                <p className="text-xs text-red-400/60 leading-relaxed">{scripts[0].negativePrompt}</p>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
+                            <p className="text-sm text-epic-purple/30">Click &ldquo;Generate Seedance Prompt&rdquo; to create a 15-second narrative prompt, or write your own here.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {/* ── Generated Scripts ── */}
-                {scripts.length > 0 && (
+                {/* ── All Generated Scripts (scrollable list) ── */}
+                {scripts.length > 1 && (
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                       <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
                         <Wand2 className="w-4 h-4 text-epic-blue" />
-                        Generated Scripts
+                        All Generated Scripts
                         <span className="text-xs font-normal text-epic-purple/40">
                           ({scripts.length})
                         </span>
@@ -1200,70 +1259,40 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                         <div key={script.id}>
                           {/* Row */}
                           <div
-                            className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50/50 transition-colors cursor-pointer"
+                            className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50/50 transition-colors cursor-pointer"
                             onClick={() =>
                               setExpandedScript(expandedScript === script.id ? null : script.id)
                             }
                           >
-                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">
+                            <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">
                               {script.word}
                             </span>
-                            <span className="text-sm text-epic-purple/50">{script.characterName}</span>
-                            {script.colorCategory && (
-                              <span
-                                className="inline-block w-5 h-5 rounded-md border border-gray-200 flex-shrink-0"
-                                style={{ background: script.bgColor || "#EDE9FE" }}
-                                title={script.colorCategory}
-                              />
-                            )}
-                            {/* Word count badge */}
                             {(() => {
                               const wc = wordCount(script.script);
                               const over = wc > 400;
                               return (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-mono font-medium flex-shrink-0 ${
-                                    over
-                                      ? "bg-red-100 text-red-600"
-                                      : "bg-emerald-50 text-emerald-600"
-                                  }`}
-                                  title={over ? "Over 400-word Seedance limit!" : "Within limit"}
-                                >
+                                <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
                                   {wc}w
                                 </span>
                               );
                             })()}
                             <span className="text-sm text-epic-purple/40 truncate flex-1">
-                              {script.script.slice(0, 60)}...
+                              {script.script.slice(0, 80)}...
                             </span>
                             <div className="flex items-center gap-2 flex-shrink-0">
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyScript(script);
-                                }}
-                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
+                                onClick={(e) => { e.stopPropagation(); copyScript(script); }}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
                               >
-                                {copiedId === script.id ? (
-                                  <><Check className="w-3.5 h-3.5" /> Copied</>
-                                ) : (
-                                  <><Copy className="w-3.5 h-3.5" /> Copy</>
-                                )}
+                                {copiedId === script.id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
                               </button>
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  deleteScriptHandler(script.id);
-                                }}
+                                onClick={(e) => { e.stopPropagation(); deleteScriptHandler(script.id); }}
                                 className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                              {expandedScript === script.id ? (
-                                <ChevronUp className="w-4 h-4 text-gray-400" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-gray-400" />
-                              )}
+                              {expandedScript === script.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
                             </div>
                           </div>
 

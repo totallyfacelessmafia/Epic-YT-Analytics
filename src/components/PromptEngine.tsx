@@ -136,6 +136,44 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const [error, setError] = useState("");
   const [textColor, setTextColor] = useState("green");
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  const getHexColor = (name: string) =>
+    name === "green" ? "#00FF00" : name === "blue" ? "#00F5FF" : name === "red" ? "#FF0000" : name === "white" ? "#FFFFFF" : "#E6D02C";
+
+  const saveAsPng = useCallback(() => {
+    const canvas = document.createElement("canvas");
+    const w = 1080;
+    const h = 1920;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, w, h);
+      const word = (selectedWord || "word").toLowerCase();
+      const hex = getHexColor(textColor);
+      const fontSize = Math.min(w * 0.22, w / (word.length * 0.55));
+      ctx.font = `900 ${fontSize}px "Arial Black", "Impact", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.lineWidth = fontSize * 0.06;
+      ctx.strokeStyle = "black";
+      ctx.fillStyle = hex;
+      const textY = h * 0.2;
+      ctx.strokeText(word, w / 2, textY);
+      ctx.fillText(word, w / 2, textY);
+
+      const link = document.createElement("a");
+      link.download = `${word}-cover.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    };
+    img.src = "/kitten-ninja-cover.png";
+  }, [selectedWord, textColor]);
 
   // Cross-reference
   const [uploadedWords, setUploadedWords] = useState<string[]>([]);
@@ -1103,18 +1141,19 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                       <div className="space-y-4">
                         {/* Word Color Preview */}
                         <div className="rounded-xl overflow-hidden border border-gray-100">
-                          <div className="relative w-full" style={{ aspectRatio: "9/16", maxHeight: "400px" }}>
+                          <div className="relative w-full" style={{ aspectRatio: "9/16" }}>
                             <img
                               src="/kitten-ninja-cover.png"
                               alt="Kitten Ninja cover"
                               className="absolute inset-0 w-full h-full object-cover"
                             />
-                            <div className="absolute inset-0 flex items-start justify-center pt-[15%]">
+                            <div className="absolute inset-0 flex items-start justify-center pt-[12%]">
                               <span
-                                className="text-6xl font-black lowercase"
+                                className="font-black lowercase"
                                 style={{
-                                  color: textColor === "green" ? "#00FF00" : textColor === "blue" ? "#00F5FF" : textColor === "red" ? "#FF0000" : textColor === "white" ? "#FFFFFF" : "#E6D02C",
-                                  WebkitTextStroke: "2px black",
+                                  fontSize: `clamp(3rem, ${Math.max(12 - (selectedWord?.length || 4), 4)}vw, 7rem)`,
+                                  color: getHexColor(textColor),
+                                  WebkitTextStroke: "3px black",
                                   paintOrder: "stroke fill",
                                 }}
                               >
@@ -1122,23 +1161,32 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                               </span>
                             </div>
                           </div>
-                          <div className="flex items-center justify-center gap-3 px-4 py-3 bg-gray-50">
-                            <span className="text-xs text-epic-purple/50 mr-2">Text Color:</span>
-                            {[
-                              { name: "green", hex: "#00FF00", label: "Electric Lime" },
-                              { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
-                              { name: "red", hex: "#FF0000", label: "Rocket Red" },
-                              { name: "white", hex: "#FFFFFF", label: "White" },
-                              { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
-                            ].map((c) => (
-                              <button
-                                key={c.name}
-                                title={c.label}
-                                onClick={() => setTextColor(c.name)}
-                                className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
-                                style={{ backgroundColor: c.hex }}
-                              />
-                            ))}
+                          <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-epic-purple/50">Text Color:</span>
+                              {[
+                                { name: "green", hex: "#00FF00", label: "Electric Lime" },
+                                { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
+                                { name: "red", hex: "#FF0000", label: "Rocket Red" },
+                                { name: "white", hex: "#FFFFFF", label: "White" },
+                                { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
+                              ].map((c) => (
+                                <button
+                                  key={c.name}
+                                  title={c.label}
+                                  onClick={() => setTextColor(c.name)}
+                                  className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
+                                  style={{ backgroundColor: c.hex }}
+                                />
+                              ))}
+                            </div>
+                            <button
+                              onClick={saveAsPng}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              Save PNG
+                            </button>
                           </div>
                         </div>
 

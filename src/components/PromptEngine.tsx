@@ -154,19 +154,23 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
       ctx.drawImage(img, 0, 0, w, h);
       const word = (selectedWord || "word").toLowerCase();
       const hex = getHexColor(textColor);
-      const fontSize = Math.min(w * 0.22, w / (word.length * 0.55));
+      // Scale font to fit: large for short words, smaller for long words
+      const maxFontSize = w * 0.28;
+      const fontSize = Math.min(maxFontSize, (w * 0.85) / (word.length * 0.58));
       ctx.font = `900 ${fontSize}px "Arial Black", "Impact", sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.lineWidth = fontSize * 0.06;
-      ctx.strokeStyle = "black";
+      // Thick dark stroke like the reference images
+      ctx.lineWidth = fontSize * 0.12;
+      ctx.strokeStyle = "#1a1a2e";
+      ctx.lineJoin = "round";
       ctx.fillStyle = hex;
-      const textY = h * 0.2;
+      const textY = h * 0.18;
       ctx.strokeText(word, w / 2, textY);
       ctx.fillText(word, w / 2, textY);
 
       const link = document.createElement("a");
-      link.download = `${word}-cover.png`;
+      link.download = `${word}-kitten-ninja-cover.png`;
       link.href = canvas.toDataURL("image/png");
       link.click();
     };

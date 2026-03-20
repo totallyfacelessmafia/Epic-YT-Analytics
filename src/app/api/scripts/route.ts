@@ -9,9 +9,10 @@ export async function GET(req: NextRequest) {
   if (!auth(req)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
-    const { getAllScripts } = await import("@/lib/db");
+    const { getAllScripts, getScriptsByCharacter } = await import("@/lib/db");
 
-    const rows = await getAllScripts();
+    const characterId = req.nextUrl.searchParams.get("characterId");
+    const rows = characterId ? await getScriptsByCharacter(characterId) : await getAllScripts();
     const scripts = rows.map((r) => ({
       id: r.id,
       word: r.word,

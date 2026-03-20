@@ -177,8 +177,8 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
     img.src = "/kitten-ninja-cover.png";
   }, [selectedWord, textColor]);
 
-  // Cross-reference
-  const [uploadedWords, setUploadedWords] = useState<string[]>([]);
+  // Cross-reference (unused for now)
+  const [uploadedWords] = useState<string[]>([]);
 
   // UI
   const [expandedScript, setExpandedScript] = useState<string | null>(null);
@@ -194,37 +194,40 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
 
   /* ---- Load from database ---- */
 
+  // Load characters once
   useEffect(() => {
-    Promise.all([
-      fetch(apiUrl("/api/characters")).then((r) => r.json()),
-      fetch(apiUrl("/api/words")).then((r) => r.json()),
-      fetch(apiUrl("/api/scripts")).then((r) => r.json()),
-      fetch(apiUrl("/api/words"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "crossref" }),
-      }).then((r) => r.json()),
-    ])
-      .then(([charData, wordData, scriptData, crossrefData]) => {
+    fetch(apiUrl("/api/characters")).then((r) => r.json())
+      .then((charData) => {
         if (charData.characters && charData.characters.length > 0) {
-          // Use DB characters, but ensure Kitten Ninja is always present
           const dbChars = charData.characters as CharacterProfile[];
           const hasKitten = dbChars.some((c: CharacterProfile) => c.id === "kitten-ninja");
           setCharacters(hasKitten ? dbChars : [DEFAULT_KITTEN_NINJA, ...dbChars]);
         }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingChars(false));
+  }, [apiUrl]);
+
+  // Load words + scripts when character changes
+  useEffect(() => {
+    setLoadingWords(true);
+    setLoadingScripts(true);
+    setSelectedWord(null);
+
+    Promise.all([
+      fetch(apiUrl("/api/words") + `&characterId=${selectedCharId}`).then((r) => r.json()),
+      fetch(apiUrl("/api/scripts") + `&characterId=${selectedCharId}`).then((r) => r.json()),
+    ])
+      .then(([wordData, scriptData]) => {
         if (wordData.words) setWords(wordData.words);
         if (scriptData.scripts) setScripts(scriptData.scripts);
-        if (crossrefData.uploaded) setUploadedWords(crossrefData.uploaded);
       })
-      .catch(() => {
-        // API failed — keep the hardcoded default
-      })
+      .catch(() => {})
       .finally(() => {
-        setLoadingChars(false);
         setLoadingWords(false);
         setLoadingScripts(false);
       });
-  }, [apiUrl]);
+  }, [apiUrl, selectedCharId]);
 
   /* ---- Step 1: Character CRUD ---- */
 
@@ -277,7 +280,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
           const res = await fetch(apiUrl("/api/words"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "check", word: clean }),
+            body: JSON.stringify({ action: "check", word: clean, characterId: selectedCharId }),
           });
           const data = await res.json();
           if (data.hasScript) {
@@ -299,7 +302,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
       const res = await fetch(apiUrl("/api/words"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ word: clean }),
+        body: JSON.stringify({ word: clean, characterId: selectedCharId }),
       });
       const data = await res.json();
 
@@ -323,13 +326,13 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
       const res = await fetch(apiUrl("/api/words"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "import", words: csvImportText }),
+        body: JSON.stringify({ action: "import", words: csvImportText, characterId: selectedCharId }),
       });
       const data = await res.json();
       setImportResult(data);
 
       // Reload words
-      const wordsRes = await fetch(apiUrl("/api/words"));
+      const wordsRes = await fetch(apiUrl("/api/words") + `&characterId=${selectedCharId}`);
       const wordsData = await wordsRes.json();
       if (wordsData.words) setWords(wordsData.words);
 
@@ -344,7 +347,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
         await fetch(apiUrl("/api/words"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "delete", word }),
+          body: JSON.stringify({ action: "delete", word, characterId: selectedCharId }),
         });
         setWords((prev) => prev.filter((w) => w.word !== word));
         if (selectedWord === word) setSelectedWord(null);
@@ -360,14 +363,14 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
       const res = await fetch(apiUrl("/api/words"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "seed" }),
+        body: JSON.stringify({ action: "seed", characterId: selectedCharId }),
       });
       const data = await res.json();
       setSeedResult(data);
       setTimeout(() => setSeedResult(null), 5000);
 
       // Reload words
-      const wordsRes = await fetch(apiUrl("/api/words"));
+      const wordsRes = await fetch(apiUrl("/api/words") + `&characterId=${selectedCharId}`);
       const wordsData = await wordsRes.json();
       if (wordsData.words) setWords(wordsData.words);
     } catch {}
@@ -578,12 +581,13 @@ NEGATIVE PROMPT: ${s.negativePrompt}
   /*  Render                                                             */
   /* ------------------------------------------------------------------ */
 
+
   return (
     <div className="min-h-screen bg-[#f8f7f4]">
       <Sidebar />
 
       <main className="ml-64 min-h-screen">
-        {/* ── Header ── */}
+        {/* Header */}
         <header className="sticky top-0 z-30 backdrop-blur-md bg-[#f8f7f4]/80 border-b border-gray-200/60">
           <div className="flex items-center justify-between px-8 py-5">
             <div>
@@ -593,12 +597,8 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                 </span>
                 {t("prompt.title")}
               </h1>
-              <p className="text-sm text-epic-purple/50 mt-0.5 font-georgia flex items-center gap-2">
+              <p className="text-sm text-epic-purple/50 mt-0.5 font-georgia">
                 Seedance 2.0 Script Generator
-                <span className="inline-flex items-center gap-1 text-xs text-epic-teal font-roboto">
-                  <Database className="w-3 h-3" />
-                  SQLite
-                </span>
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -609,6 +609,19 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                 >
                   <Download className="w-4 h-4" />
                   Export All
+                </button>
+              )}
+              {pendingWords.length > 0 && (
+                <button
+                  onClick={batchGenerateAll}
+                  disabled={generating || batchGenerating}
+                  className="flex items-center gap-2 rounded-xl bg-epic-purple px-4 py-2.5 text-sm font-bold text-white hover:bg-epic-purple/90 transition-colors disabled:opacity-40"
+                >
+                  {batchGenerating ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {batchProgress.current}/{batchProgress.total}</>
+                  ) : (
+                    <><Zap className="w-4 h-4" /> Batch All ({pendingWords.length})</>
+                  )}
                 </button>
               )}
               <LanguageToggle />
@@ -623,816 +636,491 @@ NEGATIVE PROMPT: ${s.negativePrompt}
         ) : (
           <div className="p-8 space-y-6">
 
-            {/* ── 3-Step Progress Bar ── */}
-            <div className="flex items-center gap-0 bg-white rounded-2xl border border-gray-100 shadow-sm p-2">
-              {[
-                { step: 1, label: "Select Character", icon: Palette },
-                { step: 2, label: "Pick Word", icon: ListChecks },
-                { step: 3, label: "Generate", icon: Zap },
-              ].map(({ step, label, icon: Icon }, idx) => (
-                <button
-                  key={step}
-                  onClick={() => setCurrentStep(step)}
-                  className={`flex-1 flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl text-sm font-medium transition-all ${
-                    currentStep === step
-                      ? "bg-epic-purple text-white shadow-md"
-                      : currentStep > step
-                      ? "text-epic-teal"
-                      : "text-epic-purple/40"
-                  }`}
-                >
-                  <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                      currentStep === step
-                        ? "bg-white/20 text-white"
-                        : currentStep > step
-                        ? "bg-epic-teal/20 text-epic-teal"
-                        : "bg-gray-100 text-gray-400"
-                    }`}
-                  >
-                    {currentStep > step ? (
-                      <Check className="w-4 h-4" />
+            {/* ── Creation Portal: Two Column Layout ── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="p-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                  {/* LEFT COLUMN: Character, Word, Preview */}
+                  <div className="space-y-4">
+
+                    {/* Character Dropdown */}
+                    <div>
+                      <label className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider block mb-1.5">Character Library</label>
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedCharId}
+                          onChange={(e) => setSelectedCharId(e.target.value)}
+                          className="flex-1 rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-epic-purple font-medium bg-white focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                        >
+                          {characters.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name} ({words.filter(w => w.characterId === c.id).length > 0 ? `${producedWords.length} produced` : "0 words"})</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => setShowNewChar(!showNewChar)}
+                          className="px-3 py-2.5 rounded-xl border border-gray-200 text-epic-purple/50 hover:text-epic-blue hover:border-epic-blue/30 transition-colors"
+                          title="Add new character"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* New Character Form (collapsible) */}
+                    {showNewChar && (
+                      <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-4 space-y-3">
+                        <input
+                          type="text"
+                          value={newCharName}
+                          onChange={(e) => setNewCharName(e.target.value)}
+                          placeholder="Character Name"
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                        />
+                        <textarea
+                          value={newCharDna}
+                          onChange={(e) => setNewCharDna(e.target.value)}
+                          placeholder="Visual DNA description..."
+                          rows={3}
+                          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={addCharacter} className="px-4 py-2 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90">Create</button>
+                          <button onClick={() => setShowNewChar(false)} className="px-4 py-2 rounded-lg text-sm text-epic-purple/50 hover:text-epic-purple">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Character DNA badge */}
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-epic-purple/5">
+                      <div className="w-8 h-8 rounded-lg bg-epic-purple text-white flex items-center justify-center text-sm font-bold">
+                        {selectedChar?.name?.[0] || "K"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-epic-purple">{selectedChar?.name}</p>
+                        <p className="text-xs text-epic-purple/40 truncate">Visual DNA active</p>
+                      </div>
+                      {selectedCharId !== "kitten-ninja" && (
+                        <button
+                          onClick={() => deleteCharacterHandler(selectedCharId)}
+                          className="p-1.5 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Word of the Day input */}
+                    <div>
+                      <label className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider block mb-1.5">Word of the Day</label>
+                      <input
+                        type="text"
+                        value={selectedWord || ""}
+                        onChange={(e) => {
+                          setSelectedWord(e.target.value.toLowerCase().trim() || null);
+                        }}
+                        placeholder="Type a word or click from library below..."
+                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-epic-purple font-medium bg-white focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                      />
+                      {duplicateWarning && (
+                        <p className="text-xs text-epic-pink mt-1 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          {duplicateWarning}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Style Notes */}
+                    <div>
+                      <label className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider block mb-1.5">Style Notes <span className="font-normal">(optional)</span></label>
+                      <input
+                        type="text"
+                        placeholder="e.g. lilac background, beach setting, rainy day mood"
+                        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm text-epic-purple/60 bg-white focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                      />
+                    </div>
+
+                    {/* Word Color Preview (compact) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">Word Color Preview</label>
+                        <div className="flex items-center gap-2">
+                          {[
+                            { name: "green", hex: "#00FF00" },
+                            { name: "blue", hex: "#00F5FF" },
+                            { name: "red", hex: "#FF0000" },
+                            { name: "white", hex: "#FFFFFF" },
+                            { name: "yellow", hex: "#E6D02C" },
+                          ].map((c) => (
+                            <button
+                              key={c.name}
+                              onClick={() => setTextColor(c.name)}
+                              className={`w-6 h-6 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
+                              style={{ backgroundColor: c.hex }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="rounded-xl overflow-hidden border border-gray-100">
+                        <div className="relative w-48" style={{ aspectRatio: "9/16" }}>
+                          <img src="/kitten-ninja-cover.png" alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
+                          <div className="absolute inset-0 flex items-start justify-center pt-[12%]">
+                            <span
+                              className="font-black lowercase"
+                              style={{
+                                fontSize: `clamp(1.5rem, ${Math.max(8 - (selectedWord?.length || 4), 3)}vw, 3.5rem)`,
+                                color: getHexColor(textColor),
+                                WebkitTextStroke: "1.5px black",
+                                paintOrder: "stroke fill",
+                              }}
+                            >
+                              {selectedWord || "word"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={saveAsPng}
+                        className="mt-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Save PNG (1080x1920)
+                      </button>
+                    </div>
+
+                    {/* Specs row */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-epic-purple/5 p-2 text-center">
+                        <p className="text-lg font-bold text-epic-purple">15s</p>
+                        <p className="text-[10px] text-epic-purple/50">Duration</p>
+                      </div>
+                      <div className="rounded-lg bg-epic-purple/5 p-2 text-center">
+                        <p className="text-lg font-bold text-epic-purple">9:16</p>
+                        <p className="text-[10px] text-epic-purple/50">Vertical</p>
+                      </div>
+                      <div className="rounded-lg bg-epic-purple/5 p-2 text-center">
+                        <p className="text-lg font-bold text-epic-purple">Silent</p>
+                        <p className="text-[10px] text-epic-purple/50">Character</p>
+                      </div>
+                    </div>
+
+                    {/* Generate button */}
+                    <button
+                      onClick={generateScript}
+                      disabled={generating || batchGenerating || !selectedWord}
+                      className="w-full flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-3.5 text-white font-bold text-sm shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                    >
+                      {generating ? (
+                        <><Loader2 className="w-5 h-5 animate-spin" /> Generating &ldquo;{selectedWord}&rdquo;...</>
+                      ) : (
+                        <><Sparkles className="w-5 h-5" /> Generate Seedance Prompt</>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* RIGHT COLUMN: Script Output */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-epic-purple">Video Script</h3>
+                      <p className="text-xs text-epic-purple/40">This becomes the full Seedance prompt</p>
+                    </div>
+
+                    {error && (
+                      <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
+                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        {error}
+                      </div>
+                    )}
+
+                    {scripts.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm">{scripts[0].word}</span>
+                            {(() => {
+                              const wc = wordCount(scripts[0].script);
+                              const over = wc > 400;
+                              return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{wc}/400w</span>;
+                            })()}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => copyScript(scripts[0])} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors">
+                              {copiedId === scripts[0].id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Script text (editable) */}
+                        <textarea
+                          value={scripts[0].script}
+                          readOnly
+                          className="w-full rounded-xl bg-white border border-gray-200 p-4 text-sm text-epic-purple/80 leading-relaxed font-mono resize-none focus:outline-none"
+                          rows={12}
+                        />
+
+                        {/* Narrator lines */}
+                        {scripts[0].narratorLines && scripts[0].narratorLines.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">Narrator Lines</h4>
+                              <button
+                                onClick={() => copyNarrator(scripts[0])}
+                                className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20"
+                              >
+                                {copiedId === `narrator-${scripts[0].id}` ? <><Check className="w-3 h-3" /> Copied</> : <><Copy className="w-3 h-3" /> Copy Lines</>}
+                              </button>
+                            </div>
+                            {scripts[0].narratorLines.map((nl: NarratorLine, i: number) => (
+                              <div key={i} className="flex gap-3 items-start text-sm">
+                                <span className="text-xs font-mono text-epic-blue bg-epic-blue/10 px-2 py-0.5 rounded flex-shrink-0">{nl.time}</span>
+                                <span className="text-epic-purple/70 italic font-georgia">&ldquo;{nl.line}&rdquo;</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Negative prompt */}
+                        {scripts[0].negativePrompt && (
+                          <div className="space-y-1">
+                            <h4 className="text-xs font-semibold text-red-400/80 uppercase tracking-wider">Negative Prompt (Safeguard)</h4>
+                            <p className="text-xs text-red-400/60 leading-relaxed">{scripts[0].negativePrompt}</p>
+                          </div>
+                        )}
+                      </div>
                     ) : (
-                      step
+                      <div className="rounded-xl border border-dashed border-gray-200 p-12 text-center">
+                        <Sparkles className="w-8 h-8 text-epic-purple/15 mx-auto mb-3" />
+                        <p className="text-sm text-epic-purple/30">Click &ldquo;Generate Seedance Prompt&rdquo; to create a 15-second narrative prompt, or write your own here.</p>
+                      </div>
                     )}
                   </div>
-                  <span className="hidden sm:inline">{label}</span>
-                  <Icon className="w-4 h-4 sm:hidden" />
-                  {idx < 2 && (
-                    <div className={`ml-auto w-8 h-0.5 rounded ${
-                      currentStep > step ? "bg-epic-teal/30" : "bg-gray-200"
-                    }`} />
-                  )}
-                </button>
-              ))}
+                </div>
+              </div>
             </div>
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/*  STEP 1: Select Character                               */}
-            {/* ════════════════════════════════════════════════════════ */}
-            {currentStep === 1 && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
-                    <Palette className="w-5 h-5 text-epic-teal" />
-                    Step 1: Select Character
-                  </h2>
+            {/* ── Word Library (scoped to selected character) ── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
+                  <ListChecks className="w-4 h-4 text-epic-blue" />
+                  Word Library
+                  <span className="text-xs font-normal text-epic-purple/40">
+                    {selectedChar?.name} &mdash; {words.length} words
+                  </span>
+                </h2>
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setShowNewChar(!showNewChar)}
+                    onClick={seedSightWords}
+                    className="flex items-center gap-1.5 text-xs font-medium text-epic-teal hover:text-epic-teal/80 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Seed Sight Words
+                  </button>
+                  <button
+                    onClick={() => setShowCsvImport(!showCsvImport)}
                     className="flex items-center gap-1.5 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    Add New Character
+                    <Upload className="w-3.5 h-3.5" />
+                    Import CSV
                   </button>
                 </div>
-
-                <div className="p-6 space-y-5">
-                  {/* Character cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {characters.map((char) => (
-                      <button
-                        key={char.id}
-                        onClick={() => {
-                          setSelectedCharId(char.id);
-                          setCurrentStep(2);
-                        }}
-                        className={`relative group text-left p-5 rounded-2xl border-2 transition-all ${
-                          selectedCharId === char.id
-                            ? "border-epic-purple bg-epic-purple/5 shadow-md shadow-epic-purple/10"
-                            : "border-gray-100 bg-gray-50/50 hover:border-epic-blue/30 hover:bg-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3 mb-3">
-                          <div
-                            className={`w-12 h-12 rounded-xl flex items-center justify-center text-xl font-bold ${
-                              selectedCharId === char.id
-                                ? "bg-epic-purple text-white"
-                                : "bg-gray-200/80 text-epic-purple/60"
-                            }`}
-                          >
-                            {char.name[0]}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-epic-purple">{char.name}</p>
-                            <p className="text-xs text-epic-purple/40">
-                              {selectedCharId === char.id ? "Selected" : "Click to select"}
-                            </p>
-                          </div>
-                        </div>
-                        <p className="text-xs text-epic-purple/50 line-clamp-3 font-mono leading-relaxed">
-                          {char.visualDna.slice(0, 150)}...
-                        </p>
-
-                        {/* Delete button for non-default */}
-                        {char.id !== "kitten-ninja" && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteCharacterHandler(char.id);
-                            }}
-                            className="absolute top-3 right-3 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          >
-                            ×
-                          </span>
-                        )}
-
-                        {/* Selected indicator */}
-                        {selectedCharId === char.id && (
-                          <div className="absolute top-3 right-3">
-                            <CheckCircle2 className="w-6 h-6 text-epic-purple" />
-                          </div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* New character form */}
-                  {showNewChar && (
-                    <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-5 space-y-3">
-                      <input
-                        value={newCharName}
-                        onChange={(e) => setNewCharName(e.target.value)}
-                        placeholder="Character name (e.g., Captain Quill)"
-                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
-                      />
-                      <textarea
-                        value={newCharDna}
-                        onChange={(e) => setNewCharDna(e.target.value)}
-                        placeholder="Visual DNA — describe the character's appearance rules, style constraints, and personality..."
-                        rows={6}
-                        className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none font-mono"
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={addCharacter}
-                          disabled={!newCharName.trim() || !newCharDna.trim()}
-                          className="px-5 py-2.5 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90 transition-colors disabled:opacity-40"
-                        >
-                          Save Character
-                        </button>
-                        <button
-                          onClick={() => setShowNewChar(false)}
-                          className="px-4 py-2.5 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Continue button */}
-                  {selectedChar && (
-                    <button
-                      onClick={() => setCurrentStep(2)}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-6 py-3.5 text-white font-semibold text-sm shadow-lg shadow-epic-purple/20 hover:shadow-xl transition-all"
-                    >
-                      Continue with {selectedChar.name}
-                      <ChevronDown className="w-4 h-4 rotate-[-90deg]" />
-                    </button>
-                  )}
-                </div>
               </div>
-            )}
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/*  STEP 2: Pick or Add Word                               */}
-            {/* ════════════════════════════════════════════════════════ */}
-            {currentStep === 2 && (
-              <div className="space-y-6">
-                {/* Active character badge */}
-                <div className="flex items-center gap-3 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3">
-                  <div className="w-10 h-10 rounded-xl bg-epic-purple flex items-center justify-center text-white text-lg font-bold">
-                    {selectedChar?.name[0]}
+              <div className="p-6 space-y-4">
+                {/* Seed/Import results */}
+                {seedResult && (
+                  <div className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+                    Added {seedResult.added} words, {seedResult.duplicates} already existed
                   </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-epic-purple">{selectedChar?.name}</p>
-                    <p className="text-xs text-epic-purple/40">Character locked in — Visual DNA active</p>
+                )}
+                {importResult && (
+                  <div className="text-xs text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
+                    Imported {importResult.added} words, {importResult.duplicates} duplicates skipped
                   </div>
-                  <button
-                    onClick={() => setCurrentStep(1)}
-                    className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium"
-                  >
-                    Change
-                  </button>
-                </div>
+                )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  {/* Word Library */}
-                  <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                      <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
-                        <ListChecks className="w-5 h-5 text-epic-blue" />
-                        Step 2: Pick Your Word
-                      </h2>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={seedSightWords}
-                          className="flex items-center gap-1.5 text-xs font-medium text-epic-teal hover:text-epic-teal/80 transition-colors"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Seed Sight Words
-                        </button>
-                        <button
-                          onClick={() => setShowCsvImport(!showCsvImport)}
-                          className="flex items-center gap-1.5 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
-                        >
-                          <Upload className="w-3.5 h-3.5" />
-                          Import CSV
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-5 space-y-4">
-                      {/* CSV Import */}
-                      {showCsvImport && (
-                        <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-4 space-y-3">
-                          <textarea
-                            value={csvImportText}
-                            onChange={(e) => setCsvImportText(e.target.value)}
-                            placeholder="Paste words separated by commas, semicolons, or new lines:&#10;far, high, open, close, near, run, jump..."
-                            rows={4}
-                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-epic-purple placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-epic-blue/30 resize-none"
-                          />
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={importCsv}
-                              disabled={!csvImportText.trim()}
-                              className="px-4 py-2 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90 disabled:opacity-40"
-                            >
-                              Import Words
-                            </button>
-                            <button
-                              onClick={() => { setShowCsvImport(false); setCsvImportText(""); }}
-                              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
-                            >
-                              Cancel
-                            </button>
-                            {importResult && (
-                              <span className="text-xs text-epic-teal font-medium">
-                                Added {importResult.added} words, {importResult.duplicates} duplicates skipped
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Seed result */}
-                      {seedResult && (
-                        <div className="flex items-center gap-2 rounded-xl bg-epic-teal/10 border border-epic-teal/20 px-4 py-2.5 text-sm text-epic-teal font-medium">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Loaded {seedResult.added} sight words ({seedResult.duplicates} already existed)
-                        </div>
-                      )}
-
-                      {/* Tabs: Pending / Produced */}
-                      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-                        <button
-                          onClick={() => setWordTab("pending")}
-                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                            wordTab === "pending"
-                              ? "bg-white text-epic-purple shadow-sm"
-                              : "text-epic-purple/50 hover:text-epic-purple/70"
-                          }`}
-                        >
-                          <Clock className="w-4 h-4" />
-                          Pending
-                          <span className="bg-epic-pink/10 text-epic-pink text-xs font-bold px-2 py-0.5 rounded-full">
-                            {pendingWords.length}
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => setWordTab("produced")}
-                          className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                            wordTab === "produced"
-                              ? "bg-white text-epic-purple shadow-sm"
-                              : "text-epic-purple/50 hover:text-epic-purple/70"
-                          }`}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          Produced
-                          <span className="bg-epic-teal/20 text-epic-purple text-xs font-bold px-2 py-0.5 rounded-full">
-                            {producedWords.length}
-                          </span>
-                        </button>
-                      </div>
-
-                      {/* Word grid */}
-                      {wordTab === "pending" && (
-                        <div className="space-y-2">
-                          {pendingWords.length === 0 ? (
-                            <div className="text-center py-8 text-sm text-epic-purple/30">
-                              No pending words. Add some below or import a CSV.
-                            </div>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {pendingWords.map((w) => (
-                                <button
-                                  key={w.id}
-                                  onClick={() => {
-                                    setSelectedWord(w.word);
-                                    setCurrentStep(3);
-                                  }}
-                                  className={`group relative px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                                    selectedWord === w.word
-                                      ? "bg-epic-pink text-white shadow-md shadow-epic-pink/20"
-                                      : "bg-gray-50 text-epic-purple hover:bg-epic-pink/10 hover:text-epic-pink border border-gray-100 hover:border-epic-pink/30"
-                                  }`}
-                                >
-                                  {w.word}
-                                  <span
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      deleteWordHandler(w.word);
-                                    }}
-                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                                  >
-                                    ×
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {wordTab === "produced" && (
-                        <div className="space-y-2">
-                          {producedWords.length === 0 ? (
-                            <div className="text-center py-8 text-sm text-epic-purple/30">
-                              No produced words yet. Generate some scripts!
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex flex-wrap gap-2">
-                                {producedWords.map((w) => {
-                                  const isUploaded = uploadedWords.includes(w.word);
-                                  return (
-                                    <span
-                                      key={w.id}
-                                      className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium border ${
-                                        isUploaded
-                                          ? "bg-epic-blue/10 text-epic-blue border-epic-blue/20"
-                                          : "bg-epic-teal/10 text-epic-teal border-epic-teal/20"
-                                      }`}
-                                      title={isUploaded ? "Script + Uploaded to YouTube" : "Script generated (not yet uploaded)"}
-                                    >
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      {w.word}
-                                      {isUploaded && (
-                                        <span className="w-2 h-2 rounded-full bg-epic-blue" title="Uploaded" />
-                                      )}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                              <div className="flex items-center gap-4 pt-2 text-xs text-epic-purple/40">
-                                <span className="flex items-center gap-1">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-epic-teal/60" /> Scripted
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  <span className="w-2.5 h-2.5 rounded-full bg-epic-blue" /> Uploaded to YouTube
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Add New Word panel */}
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100">
-                      <h3 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
-                        <Plus className="w-4 h-4 text-epic-pink" />
-                        Add New Word
-                      </h3>
-                    </div>
-                    <div className="p-5 space-y-4">
-                      <div>
-                        <input
-                          value={newWordInput}
-                          onChange={(e) => {
-                            setNewWordInput(e.target.value);
-                            checkDuplicate(e.target.value);
-                          }}
-                          onKeyDown={(e) => e.key === "Enter" && addNewWord()}
-                          placeholder="Type a word..."
-                          className={`w-full rounded-xl border px-4 py-3 text-lg font-bold text-epic-purple placeholder:text-gray-300 placeholder:font-normal focus:outline-none focus:ring-2 transition-all ${
-                            duplicateWarning
-                              ? "border-red-300 focus:ring-red-200 bg-red-50/50"
-                              : "border-gray-200 focus:ring-epic-blue/30"
-                          }`}
-                        />
-                        {duplicateWarning && (
-                          <div className="flex items-center gap-2 mt-2 text-sm text-red-600 font-medium">
-                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                            {duplicateWarning}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        onClick={addNewWord}
-                        disabled={!newWordInput.trim()}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-epic-purple px-4 py-3 text-white text-sm font-semibold hover:bg-epic-purple/90 transition-all disabled:opacity-40"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add to Pending
-                      </button>
-
-                      {/* Quick stats */}
-                      <div className="pt-4 border-t border-gray-100 space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-epic-purple/50">Total words</span>
-                          <span className="font-bold text-epic-purple">{words.length}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-epic-purple/50">Pending</span>
-                          <span className="font-bold text-epic-pink">{pendingWords.length}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-epic-purple/50">Produced</span>
-                          <span className="font-bold text-epic-teal">{producedWords.length}</span>
-                        </div>
-                        {words.length > 0 && (
-                          <div className="pt-2">
-                            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-epic-teal rounded-full transition-all"
-                                style={{ width: `${(producedWords.length / words.length) * 100}%` }}
-                              />
-                            </div>
-                            <p className="text-xs text-epic-purple/40 mt-1 text-center">
-                              {Math.round((producedWords.length / words.length) * 100)}% complete
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ════════════════════════════════════════════════════════ */}
-            {/*  STEP 3: One-Click Generate                             */}
-            {/* ════════════════════════════════════════════════════════ */}
-            {currentStep === 3 && (
-              <div className="space-y-6">
-                {/* Context bar */}
-                <div className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-epic-purple flex items-center justify-center text-white text-sm font-bold">
-                      {selectedChar?.name[0]}
-                    </div>
-                    <span className="text-sm font-medium text-epic-purple">{selectedChar?.name}</span>
-                  </div>
-                  <div className="w-px h-6 bg-gray-200" />
-                  {selectedWord ? (
-                    <span className="inline-flex items-center px-4 py-1.5 rounded-lg bg-epic-pink/10 text-epic-pink font-bold text-lg">
-                      {selectedWord}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-epic-purple/40">No word selected</span>
-                  )}
-                  <div className="ml-auto flex gap-2">
-                    <button onClick={() => setCurrentStep(1)} className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium">
-                      Change Character
-                    </button>
-                    <button onClick={() => setCurrentStep(2)} className="text-xs text-epic-blue hover:text-epic-blue/80 font-medium">
-                      Change Word
-                    </button>
-                  </div>
-                </div>
-
-                {/* Generate panel */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-epic-purple flex items-center gap-2">
-                      <Zap className="w-5 h-5 text-epic-yellow" />
-                      Step 3: Generate Seedance Prompt
-                    </h2>
-                    <div className="flex items-center gap-2">
-                      {pendingWords.length > 0 && (
-                        <button
-                          onClick={batchGenerateAll}
-                          disabled={generating || batchGenerating || pendingWords.length === 0}
-                          className="flex items-center gap-2 rounded-lg bg-epic-purple px-4 py-2 text-white font-bold text-sm hover:bg-epic-purple/90 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {batchGenerating ? (
-                            <><Loader2 className="w-4 h-4 animate-spin" /> {batchProgress.current}/{batchProgress.total}</>
-                          ) : (
-                            <><Zap className="w-4 h-4" /> Batch All ({pendingWords.length})</>
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="mx-6 mt-4 flex items-start gap-2.5 rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">
-                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                      {error}
-                    </div>
-                  )}
-
-                  {/* Two-column Creation Portal layout */}
-                  <div className="p-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* LEFT: Preview + Controls */}
-                      <div className="space-y-4">
-                        {/* Word Color Preview */}
-                        <div className="rounded-xl overflow-hidden border border-gray-100">
-                          <div className="relative w-48" style={{ aspectRatio: "9/16" }}>
-                            <img
-                              src="/kitten-ninja-cover.png"
-                              alt="Kitten Ninja cover"
-                              className="absolute inset-0 w-full h-full object-cover"
-                            />
-                            <div className="absolute inset-0 flex items-start justify-center pt-[12%]">
-                              <span
-                                className="font-black lowercase"
-                                style={{
-                                  fontSize: `clamp(3rem, ${Math.max(12 - (selectedWord?.length || 4), 4)}vw, 7rem)`,
-                                  color: getHexColor(textColor),
-                                  WebkitTextStroke: "3px black",
-                                  paintOrder: "stroke fill",
-                                }}
-                              >
-                                {selectedWord || "word"}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
-                            <div className="flex items-center gap-3">
-                              <span className="text-xs text-epic-purple/50">Text Color:</span>
-                              {[
-                                { name: "green", hex: "#00FF00", label: "Electric Lime" },
-                                { name: "blue", hex: "#00F5FF", label: "Cyber Blue" },
-                                { name: "red", hex: "#FF0000", label: "Rocket Red" },
-                                { name: "white", hex: "#FFFFFF", label: "White" },
-                                { name: "yellow", hex: "#E6D02C", label: "Epic Yellow" },
-                              ].map((c) => (
-                                <button
-                                  key={c.name}
-                                  title={c.label}
-                                  onClick={() => setTextColor(c.name)}
-                                  className={`w-7 h-7 rounded-full border-2 transition-transform ${textColor === c.name ? "scale-125 border-epic-purple" : "border-gray-300"}`}
-                                  style={{ backgroundColor: c.hex }}
-                                />
-                              ))}
-                            </div>
-                            <button
-                              onClick={saveAsPng}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                              Save PNG
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Rules summary */}
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                            <p className="text-xl font-bold text-epic-purple">15s</p>
-                            <p className="text-xs text-epic-purple/50">Duration</p>
-                          </div>
-                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                            <p className="text-xl font-bold text-epic-purple">9:16</p>
-                            <p className="text-xs text-epic-purple/50">Vertical</p>
-                          </div>
-                          <div className="rounded-xl bg-epic-purple/5 p-3 text-center">
-                            <p className="text-xl font-bold text-epic-purple">Silent</p>
-                            <p className="text-xs text-epic-purple/50">Character</p>
-                          </div>
-                        </div>
-
-                        {/* Generate button */}
-                        <button
-                          onClick={generateScript}
-                          disabled={generating || batchGenerating || !selectedWord}
-                          className="w-full flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-epic-pink to-epic-purple px-6 py-4 text-white font-bold text-base shadow-lg shadow-epic-pink/20 hover:shadow-xl hover:shadow-epic-pink/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                        >
-                          {generating ? (
-                            <><Loader2 className="w-5 h-5 animate-spin" /> Generating &ldquo;{selectedWord}&rdquo;...</>
-                          ) : (
-                            <><Sparkles className="w-5 h-5" /> Generate Seedance Prompt</>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* RIGHT: Script Output */}
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-epic-purple">Video Script</h3>
-                          <p className="text-xs text-epic-purple/40">This becomes the full Seedance prompt</p>
-                        </div>
-
-                        {/* Show latest script or placeholder */}
-                        {scripts.length > 0 ? (
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm">
-                                  {scripts[0].word}
-                                </span>
-                                {(() => {
-                                  const wc = wordCount(scripts[0].script);
-                                  const over = wc > 400;
-                                  return (
-                                    <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
-                                      {wc}/400w
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => copyScript(scripts[0])}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
-                                >
-                                  {copiedId === scripts[0].id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
-                                </button>
-                              </div>
-                            </div>
-                            <div className="rounded-xl bg-white border border-gray-200 p-4 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono max-h-[340px] overflow-y-auto">
-                              {scripts[0].script}
-                            </div>
-                            {/* Narrator lines */}
-                            {scripts[0].narratorLines && scripts[0].narratorLines.length > 0 && (
-                              <div className="space-y-1">
-                                <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">Narrator Lines</h4>
-                                <div className="space-y-1">
-                                  {scripts[0].narratorLines.map((nl: NarratorLine, i: number) => (
-                                    <div key={i} className="flex gap-3 items-start text-sm">
-                                      <span className="text-xs font-mono text-epic-blue bg-epic-blue/10 px-2 py-0.5 rounded flex-shrink-0">{nl.time}</span>
-                                      <span className="text-epic-purple/70 italic font-georgia">&ldquo;{nl.line}&rdquo;</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                            {/* Negative prompt */}
-                            {scripts[0].negativePrompt && (
-                              <div className="space-y-1">
-                                <h4 className="text-xs font-semibold text-red-400/80 uppercase tracking-wider">Negative Prompt (Safeguard)</h4>
-                                <p className="text-xs text-red-400/60 leading-relaxed">{scripts[0].negativePrompt}</p>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-gray-200 p-8 text-center">
-                            <p className="text-sm text-epic-purple/30">Click &ldquo;Generate Seedance Prompt&rdquo; to create a 15-second narrative prompt, or write your own here.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── All Generated Scripts (scrollable list) ── */}
-                {scripts.length > 1 && (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                      <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
-                        <Wand2 className="w-4 h-4 text-epic-blue" />
-                        All Generated Scripts
-                        <span className="text-xs font-normal text-epic-purple/40">
-                          ({scripts.length})
-                        </span>
-                      </h2>
-                    </div>
-
-                    <div className="divide-y divide-gray-50">
-                      {scripts.map((script) => (
-                        <div key={script.id}>
-                          {/* Row */}
-                          <div
-                            className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50/50 transition-colors cursor-pointer"
-                            onClick={() =>
-                              setExpandedScript(expandedScript === script.id ? null : script.id)
-                            }
-                          >
-                            <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">
-                              {script.word}
-                            </span>
-                            {(() => {
-                              const wc = wordCount(script.script);
-                              const over = wc > 400;
-                              return (
-                                <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>
-                                  {wc}w
-                                </span>
-                              );
-                            })()}
-                            <span className="text-sm text-epic-purple/40 truncate flex-1">
-                              {script.script.slice(0, 80)}...
-                            </span>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); copyScript(script); }}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors"
-                              >
-                                {copiedId === script.id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
-                              </button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteScriptHandler(script.id); }}
-                                className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                              {expandedScript === script.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
-                            </div>
-                          </div>
-
-                          {/* Expanded */}
-                          {expandedScript === script.id && (
-                            <div className="px-6 pb-5 bg-gray-50/30">
-                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                                {/* Script */}
-                                <div className="lg:col-span-2 space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                                      Full Animation Script
-                                    </h4>
-                                    {(() => {
-                                      const wc = wordCount(script.script);
-                                      const over = wc > 400;
-                                      return (
-                                        <span
-                                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-mono font-medium ${
-                                            over
-                                              ? "bg-red-100 text-red-600"
-                                              : "bg-emerald-50 text-emerald-600"
-                                          }`}
-                                        >
-                                          {wc} / 400 words
-                                          {over && <AlertTriangle className="w-3 h-3" />}
-                                        </span>
-                                      );
-                                    })()}
-                                  </div>
-                                  <div className="rounded-xl bg-white border border-gray-100 p-5 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono">
-                                    {script.script}
-                                  </div>
-                                </div>
-
-                                {/* Sidebar */}
-                                <div className="space-y-4">
-                                  {/* Narrator — separate copyable */}
-                                  <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                      <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">
-                                        Narrator Lines (Offscreen)
-                                      </h4>
-                                      <button
-                                        onClick={() => copyNarrator(script)}
-                                        className="flex items-center gap-1 text-xs font-medium text-epic-blue hover:text-epic-blue/80 transition-colors"
-                                      >
-                                        {copiedId === `narrator-${script.id}` ? (
-                                          <><Check className="w-3 h-3" /> Copied</>
-                                        ) : (
-                                          <><Copy className="w-3 h-3" /> Copy Lines</>
-                                        )}
-                                      </button>
-                                    </div>
-                                    <div className="rounded-xl bg-white border border-epic-blue/20 p-4 space-y-2.5">
-                                      {script.narratorLines.map((nl, i) => (
-                                        <div key={i} className="flex gap-3 text-sm">
-                                          <span className="text-epic-blue font-mono font-medium shrink-0 w-12">
-                                            {nl.time}
-                                          </span>
-                                          <span className="text-epic-purple/70 italic">
-                                            &ldquo;{nl.line}&rdquo;
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-
-                                  {/* Negative prompt */}
-                                  <div>
-                                    <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider mb-2">
-                                      Negative Prompt (Safeguard)
-                                    </h4>
-                                    <div className="rounded-xl bg-red-50/50 border border-red-100/50 p-4 text-xs text-red-600/70 font-mono leading-relaxed">
-                                      {script.negativePrompt}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                {/* CSV Import */}
+                {showCsvImport && (
+                  <div className="rounded-xl border border-dashed border-epic-blue/30 bg-epic-blue/5 p-4 space-y-3">
+                    <textarea
+                      value={csvImportText}
+                      onChange={(e) => setCsvImportText(e.target.value)}
+                      placeholder="Paste words separated by commas, semicolons, or new lines: far, high, open, close, near, run, jump..."
+                      rows={3}
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={importCsv} className="px-4 py-2 rounded-lg bg-epic-blue text-white text-sm font-medium hover:bg-epic-blue/90">Import Words</button>
+                      <button onClick={() => setShowCsvImport(false)} className="px-4 py-2 rounded-lg text-sm text-epic-purple/50 hover:text-epic-purple">Cancel</button>
                     </div>
                   </div>
                 )}
+
+                {/* Add single word */}
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newWordInput}
+                    onChange={(e) => {
+                      setNewWordInput(e.target.value);
+                      checkDuplicate(e.target.value);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && addNewWord()}
+                    placeholder="Type a word to add..."
+                    className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-epic-blue/30"
+                  />
+                  <button
+                    onClick={addNewWord}
+                    disabled={!newWordInput.trim()}
+                    className="px-4 py-2 rounded-lg bg-epic-yellow text-epic-purple text-sm font-medium hover:bg-epic-yellow/80 transition-colors disabled:opacity-40"
+                  >
+                    <Plus className="w-4 h-4 inline mr-1" />
+                    Add
+                  </button>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-0 rounded-xl bg-gray-100/80 p-1">
+                  <button
+                    onClick={() => setWordTab("pending")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all ${
+                      wordTab === "pending" ? "bg-white text-epic-purple shadow-sm" : "text-epic-purple/50"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Pending
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${wordTab === "pending" ? "bg-epic-pink/10 text-epic-pink" : "bg-gray-200 text-gray-500"}`}>
+                      {pendingWords.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setWordTab("produced")}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-xs font-medium transition-all ${
+                      wordTab === "produced" ? "bg-white text-epic-purple shadow-sm" : "text-epic-purple/50"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Produced
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${wordTab === "produced" ? "bg-emerald-50 text-emerald-600" : "bg-gray-200 text-gray-500"}`}>
+                      {producedWords.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Word chips */}
+                <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                  {(wordTab === "pending" ? pendingWords : producedWords).length === 0 ? (
+                    <p className="text-xs text-epic-purple/30 py-4 w-full text-center">
+                      {wordTab === "pending" ? "No pending words. Add some above or import a CSV." : "No produced words yet."}
+                    </p>
+                  ) : (
+                    (wordTab === "pending" ? pendingWords : producedWords).map((w) => (
+                      <button
+                        key={w.id}
+                        onClick={() => {
+                          setSelectedWord(w.word);
+                          checkDuplicate(w.word);
+                        }}
+                        className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                          selectedWord === w.word
+                            ? "bg-epic-purple text-white"
+                            : wordTab === "pending"
+                            ? "bg-epic-yellow/10 text-epic-purple hover:bg-epic-yellow/20"
+                            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                        }`}
+                      >
+                        {w.word}
+                        {uploadedWords.includes(w.word) && <span className="text-[10px] opacity-50">YT</span>}
+                        <span
+                          onClick={(e) => { e.stopPropagation(); deleteWordHandler(w.word); }}
+                          className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+
+                {/* Stats */}
+                <div className="flex gap-4 text-xs text-epic-purple/40 border-t border-gray-100 pt-3">
+                  <span>Total words: <strong className="text-epic-purple">{words.length}</strong></span>
+                  <span>Pending: <strong className="text-epic-pink">{pendingWords.length}</strong></span>
+                  <span>Produced: <strong className="text-emerald-600">{producedWords.length}</strong></span>
+                </div>
+              </div>
+            </div>
+
+            {/* ── All Generated Scripts (history) ── */}
+            {scripts.length > 1 && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-gray-100">
+                  <h2 className="text-sm font-semibold text-epic-purple flex items-center gap-2">
+                    <Wand2 className="w-4 h-4 text-epic-blue" />
+                    Script History
+                    <span className="text-xs font-normal text-epic-purple/40">({scripts.length})</span>
+                  </h2>
+                </div>
+                <div className="divide-y divide-gray-50">
+                  {scripts.map((script) => (
+                    <div key={script.id}>
+                      <div
+                        className="flex items-center gap-4 px-6 py-3 hover:bg-gray-50/50 transition-colors cursor-pointer"
+                        onClick={() => setExpandedScript(expandedScript === script.id ? null : script.id)}
+                      >
+                        <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">{script.word}</span>
+                        {(() => {
+                          const wc = wordCount(script.script);
+                          return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${wc > 400 ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{wc}w</span>;
+                        })()}
+                        <span className="text-sm text-epic-purple/40 truncate flex-1">{script.script.slice(0, 80)}...</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button onClick={(e) => { e.stopPropagation(); copyScript(script); }} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-epic-blue/10 text-epic-blue hover:bg-epic-blue/20 transition-colors">
+                            {copiedId === script.id ? <><Check className="w-3.5 h-3.5" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); deleteScriptHandler(script.id); }} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          {expandedScript === script.id ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                        </div>
+                      </div>
+
+                      {expandedScript === script.id && (
+                        <div className="px-6 pb-5 bg-gray-50/30">
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                            <div className="lg:col-span-2">
+                              <div className="rounded-xl bg-white border border-gray-100 p-5 text-sm text-epic-purple/80 leading-relaxed whitespace-pre-wrap font-mono">
+                                {script.script}
+                              </div>
+                            </div>
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-semibold text-epic-purple/50 uppercase tracking-wider">Narrator Lines</h4>
+                              {script.narratorLines?.map((nl: NarratorLine, i: number) => (
+                                <div key={i} className="flex gap-2 items-start text-sm">
+                                  <span className="text-xs font-mono text-epic-blue bg-epic-blue/10 px-2 py-0.5 rounded flex-shrink-0">{nl.time}</span>
+                                  <span className="text-epic-purple/70 italic font-georgia text-xs">&ldquo;{nl.line}&rdquo;</span>
+                                </div>
+                              ))}
+                              <h4 className="text-xs font-semibold text-red-400/80 uppercase tracking-wider mt-4">Negative Prompt</h4>
+                              <p className="text-xs text-red-400/60 leading-relaxed">{script.negativePrompt}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
         )}
+
+        {/* Footer */}
+        <footer className="border-t border-gray-200/60 mt-8">
+          <div className="px-8 py-4 text-xs text-epic-purple/30">
+            Managed by Revelation Inc. AI
+          </div>
+        </footer>
       </main>
     </div>
   );

@@ -66,17 +66,19 @@ async function ensureMigrated(): Promise<Client> {
 
     CREATE TABLE IF NOT EXISTS words (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
-      word        TEXT NOT NULL UNIQUE,
+      word        TEXT NOT NULL,
       status      TEXT NOT NULL DEFAULT 'pending',
-      character_id TEXT,
+      character_id TEXT NOT NULL DEFAULT 'kitten-ninja',
       added_at    INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-      produced_at INTEGER
+      produced_at INTEGER,
+      UNIQUE(word, character_id)
     );
 
     CREATE INDEX IF NOT EXISTS idx_scripts_word ON scripts(word);
     CREATE INDEX IF NOT EXISTS idx_scripts_character ON scripts(character_id);
     CREATE INDEX IF NOT EXISTS idx_metadata_drive ON metadata_history(drive_file_id);
     CREATE INDEX IF NOT EXISTS idx_words_status ON words(status);
+    CREATE INDEX IF NOT EXISTS idx_words_character ON words(character_id);
   `);
 
   // Seed default Kitten Ninja character if not exists
@@ -275,50 +277,67 @@ export interface DbWord {
   produced_at: number | null;
 }
 
+export async function getWordsByCharacter(characterId: string): Promise<DbWord[]> {
+  const db = await ensureMigrated();
+  const result = await db.execute({
+    sql: "SELECT * FROM words WHERE character_id = ? ORDER BY status ASC, added_at DESC",
+    args: [characterId],
+  });
+  return result.rows.map((r) => rowToObj<DbWord>(r as unknown as Record<string, unknown>));
+}
+
 export async function getAllWords(): Promise<DbWord[]> {
   const db = await ensureMigrated();
   const result = await db.execute("SELECT * FROM words ORDER BY status ASC, added_at DESC");
   return result.rows.map((r) => rowToObj<DbWord>(r as unknown as Record<string, unknown>));
 }
 
-export async function getPendingWords(): Promise<DbWord[]> {
+export async function getPendingWords(characterId?: string): Promise<DbWord[]> {
   const db = await ensureMigrated();
-  const result = await db.execute("SELECT * FROM words WHERE status = 'pending' ORDER BY added_at ASC");
+  const sql = characterId
+    ? "SELECT * FROM words WHERE status = 'pending' AND character_id = ? ORDER BY added_at ASC"
+    : "SELECT * FROM words WHERE status = 'pending' ORDER BY added_at ASC";
+  const args = characterId ? [characterId] : [];
+  const result = await db.execute({ sql, args });
   return result.rows.map((r) => rowToObj<DbWord>(r as unknown as Record<string, unknown>));
 }
 
-export async function getProducedWords(): Promise<DbWord[]> {
+export async function getProducedWords(characterId?: string): Promise<DbWord[]> {
   const db = await ensureMigrated();
-  const result = await db.execute("SELECT * FROM words WHERE status = 'produced' ORDER BY produced_at DESC");
+  const sql = characterId
+    ? "SELECT * FROM words WHERE status = 'produced' AND character_id = ? ORDER BY produced_at DESC"
+    : "SELECT * FROM words WHERE status = 'produced' ORDER BY produced_at DESC";
+  const args = characterId ? [characterId] : [];
+  const result = await db.execute({ sql, args });
   return result.rows.map((r) => rowToObj<DbWord>(r as unknown as Record<string, unknown>));
 }
 
-export async function wordExists(word: string): Promise<boolean> {
+export async function wordExists(word: string, characterId?: string): Promise<boolean> {
   const db = await ensureMigrated();
-  const result = await db.execute({ sql: "SELECT id FROM words WHERE LOWER(word) = LOWER(?)", args: [word] });
+  const sql = characterId
+    ? "SELECT id FROM words WHERE LOWER(word) = LOWER(?) AND character_id = ?"
+    : "SELECT id FROM words WHERE LOWER(word) = LOWER(?)";
+  const args = characterId ? [word, characterId] : [word];
+  const result = await db.execute({ sql, args });
   return result.rows.length > 0;
 }
 
-export async function getWordStatus(word: string): Promise<DbWord | undefined> {
+export async function addWord(word: string, characterId: string = "kitten-ninja"): Promise<DbWord | null> {
   const db = await ensureMigrated();
-  const result = await db.execute({ sql: "SELECT * FROM words WHERE LOWER(word) = LOWER(?)", args: [word] });
-  return result.rows.length > 0 ? rowToObj<DbWord>(result.rows[0] as unknown as Record<string, unknown>) : undefined;
-}
-
-export async function addWord(word: string): Promise<DbWord | null> {
-  const db = await ensureMigrated();
-  const existing = await db.execute({ sql: "SELECT * FROM words WHERE LOWER(word) = LOWER(?)", args: [word] });
-  if (existing.rows.length > 0) return null;
-  const now = Date.now();
   const clean = word.toLowerCase().trim();
-  const result = await db.execute({
-    sql: "INSERT INTO words (word, status, added_at) VALUES (?, 'pending', ?)",
-    args: [clean, now],
-  });
-  return { id: Number(result.lastInsertRowid), word: clean, status: "pending", character_id: null, added_at: now, produced_at: null };
+  const now = Date.now();
+  try {
+    const result = await db.execute({
+      sql: "INSERT INTO words (word, status, character_id, added_at) VALUES (?, 'pending', ?, ?)",
+      args: [clean, characterId, now],
+    });
+    return { id: Number(result.lastInsertRowid), word: clean, status: "pending", character_id: characterId, added_at: now, produced_at: null };
+  } catch {
+    return null; // duplicate
+  }
 }
 
-export async function addWordsFromCsv(words: string[]): Promise<{ added: number; duplicates: number }> {
+export async function addWordsFromCsv(words: string[], characterId: string = "kitten-ninja"): Promise<{ added: number; duplicates: number }> {
   const db = await ensureMigrated();
   let added = 0;
   let duplicates = 0;
@@ -327,11 +346,10 @@ export async function addWordsFromCsv(words: string[]): Promise<{ added: number;
   const stmts: InStatement[] = [];
   const cleanWords = words.map((w) => w.toLowerCase().trim()).filter(Boolean);
 
-  // Use batch for efficiency
   for (const clean of cleanWords) {
     stmts.push({
-      sql: "INSERT OR IGNORE INTO words (word, status, added_at) VALUES (?, 'pending', ?)",
-      args: [clean, now],
+      sql: "INSERT OR IGNORE INTO words (word, status, character_id, added_at) VALUES (?, 'pending', ?, ?)",
+      args: [clean, characterId, now],
     });
   }
 
@@ -344,53 +362,55 @@ export async function addWordsFromCsv(words: string[]): Promise<{ added: number;
   return { added, duplicates };
 }
 
-export async function markWordProduced(word: string, characterId?: string): Promise<void> {
+export async function markWordProduced(word: string, characterId: string): Promise<void> {
   const db = await ensureMigrated();
   await db.execute({
-    sql: "UPDATE words SET status = 'produced', produced_at = ?, character_id = ? WHERE LOWER(word) = LOWER(?)",
-    args: [Date.now(), characterId ?? null, word],
+    sql: "UPDATE words SET status = 'produced', produced_at = ? WHERE LOWER(word) = LOWER(?) AND character_id = ?",
+    args: [Date.now(), word, characterId],
   });
 }
 
-export async function markWordPending(word: string): Promise<void> {
+export async function markWordPending(word: string, characterId: string): Promise<void> {
   const db = await ensureMigrated();
   await db.execute({
-    sql: "UPDATE words SET status = 'pending', produced_at = NULL, character_id = NULL WHERE LOWER(word) = LOWER(?)",
-    args: [word],
+    sql: "UPDATE words SET status = 'pending', produced_at = NULL WHERE LOWER(word) = LOWER(?) AND character_id = ?",
+    args: [word, characterId],
   });
 }
 
-export async function deleteWord(word: string): Promise<void> {
+export async function deleteWord(word: string, characterId?: string): Promise<void> {
   const db = await ensureMigrated();
-  await db.execute({ sql: "DELETE FROM words WHERE LOWER(word) = LOWER(?)", args: [word] });
+  if (characterId) {
+    await db.execute({ sql: "DELETE FROM words WHERE LOWER(word) = LOWER(?) AND character_id = ?", args: [word, characterId] });
+  } else {
+    await db.execute({ sql: "DELETE FROM words WHERE LOWER(word) = LOWER(?)", args: [word] });
+  }
 }
 
-export async function scriptExistsForWord(word: string): Promise<boolean> {
+export async function scriptExistsForWord(word: string, characterId?: string): Promise<boolean> {
   const db = await ensureMigrated();
-  const result = await db.execute({ sql: "SELECT id FROM scripts WHERE LOWER(word) = LOWER(?) LIMIT 1", args: [word] });
+  const sql = characterId
+    ? "SELECT id FROM scripts WHERE LOWER(word) = LOWER(?) AND character_id = ? LIMIT 1"
+    : "SELECT id FROM scripts WHERE LOWER(word) = LOWER(?) LIMIT 1";
+  const args = characterId ? [word, characterId] : [word];
+  const result = await db.execute({ sql, args });
   return result.rows.length > 0;
 }
 
-export async function getUploadedWordsList(): Promise<string[]> {
+export async function getScriptsByCharacter(characterId: string): Promise<DbScript[]> {
   const db = await ensureMigrated();
-  const result = await db.execute(
-    `SELECT DISTINCT LOWER(REPLACE(REPLACE(filename, '.mp4', ''), 'word_', '')) as word
-     FROM metadata_history WHERE status = 'uploaded'`
-  );
-  return result.rows.map((r) => String(r.word));
-}
-
-export async function getScriptedWords(): Promise<string[]> {
-  const db = await ensureMigrated();
-  const result = await db.execute("SELECT DISTINCT LOWER(word) as word FROM scripts");
-  return result.rows.map((r) => String(r.word));
+  const result = await db.execute({
+    sql: "SELECT * FROM scripts WHERE character_id = ? ORDER BY generated_at DESC",
+    args: [characterId],
+  });
+  return result.rows.map((r) => rowToObj<DbScript>(r as unknown as Record<string, unknown>));
 }
 
 /* ------------------------------------------------------------------ */
 /*  Sight Word Seeder                                                  */
 /* ------------------------------------------------------------------ */
 
-export async function seedSightWords(): Promise<{ added: number; duplicates: number }> {
+export async function seedSightWords(characterId: string = "kitten-ninja"): Promise<{ added: number; duplicates: number }> {
   const DOLCH_FRY_KINDERGARTEN = [
     // Dolch Pre-Primer
     "a", "and", "away", "big", "blue", "can", "come", "down",
@@ -420,5 +440,5 @@ export async function seedSightWords(): Promise<{ added: number; duplicates: num
     "happy", "sad", "mad", "glad", "kind", "nice", "brave", "love",
   ];
 
-  return addWordsFromCsv(DOLCH_FRY_KINDERGARTEN);
+  return addWordsFromCsv(DOLCH_FRY_KINDERGARTEN, characterId);
 }

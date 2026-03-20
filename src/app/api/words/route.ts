@@ -4,17 +4,21 @@ function auth(req: NextRequest) {
   return req.nextUrl.searchParams.get("key") === process.env.DASHBOARD_ACCESS_KEY;
 }
 
-// GET /api/words — list words, optionally filtered by status
+// GET /api/words — list words, optionally filtered by status and character
 export async function GET(req: NextRequest) {
   if (!auth(req)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
-    const { getAllWords, getPendingWords, getProducedWords } = await import("@/lib/db");
+    const { getWordsByCharacter, getAllWords, getPendingWords, getProducedWords } = await import("@/lib/db");
 
     const status = req.nextUrl.searchParams.get("status");
+    const characterId = req.nextUrl.searchParams.get("characterId");
 
     let rows;
-    if (status === "pending") rows = await getPendingWords();
+    if (characterId) {
+      rows = await getWordsByCharacter(characterId);
+      if (status) rows = rows.filter((r) => r.status === status);
+    } else if (status === "pending") rows = await getPendingWords();
     else if (status === "produced") rows = await getProducedWords();
     else rows = await getAllWords();
 
@@ -47,30 +51,22 @@ export async function POST(req: NextRequest) {
       deleteWord,
       scriptExistsForWord,
       seedSightWords,
-      getScriptedWords,
-      getUploadedWordsList,
     } = await import("@/lib/db");
 
     const body = await req.json();
+    const characterId = body.characterId || "kitten-ninja";
 
     // Seed Dolch/Fry kindergarten sight words
     if (body.action === "seed") {
-      const result = await seedSightWords();
+      const result = await seedSightWords(characterId);
       return NextResponse.json(result);
     }
 
-    // Get cross-reference data (scripted + uploaded words)
-    if (body.action === "crossref") {
-      const scripted = await getScriptedWords();
-      const uploaded = await getUploadedWordsList();
-      return NextResponse.json({ scripted, uploaded });
-    }
-
-    // Check if a word already has a script (duplicate detection)
+    // Check if a word already has a script for this character
     if (body.action === "check") {
       const word = (body.word || "").toLowerCase().trim();
       if (!word) return NextResponse.json({ error: "word required" }, { status: 400 });
-      const hasScript = await scriptExistsForWord(word);
+      const hasScript = await scriptExistsForWord(word, characterId);
       return NextResponse.json({ word, hasScript });
     }
 
@@ -85,25 +81,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "No words provided" }, { status: 400 });
       }
 
-      const result = await addWordsFromCsv(rawWords);
+      const result = await addWordsFromCsv(rawWords, characterId);
       return NextResponse.json(result);
     }
 
     // Mark a word as produced
     if (body.action === "produce") {
-      await markWordProduced(body.word, body.characterId);
+      await markWordProduced(body.word, characterId);
       return NextResponse.json({ ok: true });
     }
 
     // Mark a word back to pending
     if (body.action === "unproduce") {
-      await markWordPending(body.word);
+      await markWordPending(body.word, characterId);
       return NextResponse.json({ ok: true });
     }
 
     // Delete a word
     if (body.action === "delete") {
-      await deleteWord(body.word);
+      await deleteWord(body.word, characterId);
       return NextResponse.json({ ok: true });
     }
 
@@ -111,13 +107,13 @@ export async function POST(req: NextRequest) {
     const word = (body.word || "").toLowerCase().trim();
     if (!word) return NextResponse.json({ error: "word required" }, { status: 400 });
 
-    const result = await addWord(word);
+    const result = await addWord(word, characterId);
     if (!result) {
-      return NextResponse.json({ error: "duplicate", message: `"${word}" already exists in the word library!` }, { status: 409 });
+      return NextResponse.json({ error: "duplicate", message: `"${word}" already exists for this character!` }, { status: 409 });
     }
 
     return NextResponse.json({
-      word: { id: result.id, word: result.word, status: result.status, addedAt: result.added_at },
+      word: { id: result.id, word: result.word, status: result.status, characterId: result.character_id, addedAt: result.added_at },
     });
   } catch (err) {
     console.error("POST /api/words error:", err);

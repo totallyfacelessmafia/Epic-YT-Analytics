@@ -110,7 +110,41 @@ Return ONLY valid JSON in this exact format:
       .replace(/```json\n?/g, "")
       .replace(/```\n?/g, "")
       .trim();
-    const script = JSON.parse(cleaned);
+
+    // Robust JSON parsing — fix common issues like unescaped quotes in script text
+    let script;
+    try {
+      script = JSON.parse(cleaned);
+    } catch {
+      // Try to fix unescaped quotes inside string values
+      const fixed = cleaned.replace(/"script"\s*:\s*"([\s\S]*?)"\s*,\s*"narratorLines/,
+        (match, scriptContent) => {
+          const escaped = scriptContent
+            .replace(/(?<!\\)"/g, '\\"')
+            .replace(/\n/g, '\\n');
+          return `"script": "${escaped}", "narratorLines`;
+        }
+      );
+      try {
+        script = JSON.parse(fixed);
+      } catch {
+        // Last resort: extract fields manually
+        const wordMatch = cleaned.match(/"word"\s*:\s*"([^"]+)"/);
+        const scriptMatch = cleaned.match(/"script"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"narrator|"\s*})/);
+        script = {
+          word: wordMatch?.[1] ?? word,
+          setting: "Lavender Dojo",
+          background: STANDARD_BACKGROUND,
+          script: scriptMatch?.[1]?.replace(/\\n/g, '\n').replace(/\\"/g, '"') ?? cleaned,
+          narratorLines: [
+            { time: "0s", line: `Today's word of the day is... ${word}!` },
+            { time: "~6s", line: "" },
+            { time: "~13s", line: "" },
+          ],
+          negativePrompt: NEGATIVE_PROMPT_BASE,
+        };
+      }
+    }
 
     // Force the negative prompt to always include our safeguard base
     if (!script.negativePrompt || !script.negativePrompt.includes("blinking eyes")) {

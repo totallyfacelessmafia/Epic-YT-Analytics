@@ -51,7 +51,7 @@ interface VideoItem extends DriveFile {
 /* Shorts-safe word text color options */
 const TEXT_COLOR_OPTIONS = [
   { name: "Electric Lime", hex: "#00FF00", vibe: "Action words" },
-  { name: "Cyber Blue", hex: "#00F5FF", vibe: "Concept words" },
+  { name: "Cyber Blue", hex: "#35AAFF", vibe: "Concept words" },
   { name: "Rocket Red", hex: "#FF0000", vibe: "Alert words" },
   { name: "White", hex: "#FFFFFF", vibe: "Default" },
   { name: "Epic Yellow", hex: "#E6D02C", vibe: "Highlights" },

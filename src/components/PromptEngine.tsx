@@ -137,7 +137,7 @@ function PromptEngineContent({ accessKey }: { accessKey: string }) {
   const [error, setError] = useState("");
   const [textColor, setTextColor] = useState("green");
   const getHexColor = (name: string) =>
-    name === "green" ? "#00FF00" : name === "blue" ? "#00F5FF" : name === "red" ? "#FF0000" : name === "white" ? "#FFFFFF" : "#E6D02C";
+    name === "green" ? "#00FF00" : name === "blue" ? "#35AAFF" : name === "red" ? "#FF0000" : name === "white" ? "#FFFFFF" : "#E6D02C";
 
   const saveAsPng = useCallback(() => {
     const canvas = document.createElement("canvas");
@@ -747,7 +747,7 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                         <div className="flex items-center gap-2">
                           {[
                             { name: "green", hex: "#00FF00" },
-                            { name: "blue", hex: "#00F5FF" },
+                            { name: "blue", hex: "#35AAFF" },
                             { name: "red", hex: "#FF0000" },
                             { name: "white", hex: "#FFFFFF" },
                             { name: "yellow", hex: "#E6D02C" },

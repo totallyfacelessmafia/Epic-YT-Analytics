@@ -56,14 +56,14 @@ export async function POST(request: NextRequest) {
 
 Your prompts are HIGHLY SPECIFIC and VISUAL — you describe exact props, exact movements, exact sound effects, and exact choreography. Think like a Pixar storyboard artist writing for preschoolers.
 
-REFERENCE EXAMPLE (for the word "catch"):
-"The word catch is visible on the lavender wall. Kitten Ninja stands ready on the tan floor, arms outstretched like he's waiting for a hug. A soft 'Whirr' sound plays as a large, bright pink frosted donut with sprinkles floats into the frame from the left like a frisbee. The narrator says: 'Today's word of the day is... catch!'
+REFERENCE EXAMPLE (for the word "catch" in ${colorName} text):
+"A large and thick lowercase ${colorName} word 'catch' with a dark outline appears on the lavender wall. Kitten Ninja stands ready on the tan floor, arms outstretched like he's waiting for a hug. A soft 'Whirr' sound plays as a large, bright pink frosted donut with sprinkles floats into the frame from the left like a frisbee. The narrator says: 'Today's word of the day is... catch!'
 
 Kitten Ninja gets a determined look (tilted head). He tracks the donut with his dot eyes. Just as the donut reaches him, he leaps into the air and 'catches' it. However, instead of grabbing it with his paws, the donut lands perfectly around his middle like a hula hoop! A 'Slide-whistle' sound plays as he spins around once in the air. The narrator says: 'Got it! Kitten Ninja can really catch!'
 
 Kitten Ninja lands on his feet with the donut still around his waist. He looks down at his new 'donut belt' and gives a big thumbs up to the camera.
 
-FINALE: Kitten Ninja strikes a heroic pose. The word catch pulses with a soft, sugary pink glow. Tiny sprinkle icons and white stars rain down. The narrator says: 'Nice hands! That is catch!'"
+FINALE: Kitten Ninja strikes a heroic pose. The ${colorName} word catch pulses and glows on the lavender wall. Tiny sprinkle icons and white stars rain down. The narrator says: 'Nice hands! That is catch!'"
 
 NOW WRITE A PROMPT LIKE THIS FOR THE WORD "${word}".
 

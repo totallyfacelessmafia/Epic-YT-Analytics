@@ -838,9 +838,9 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                           <div className="flex items-center gap-2">
                             <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm">{scripts[0].word}</span>
                             {(() => {
-                              const wc = wordCount(scripts[0].script);
-                              const over = wc > 400;
-                              return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{wc}/400w</span>;
+                              const cc = scripts[0].script.length;
+                              const over = cc > 2000;
+                              return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${over ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{cc.toLocaleString()}/2,000 chars</span>;
                             })()}
                           </div>
                           <div className="flex items-center gap-1">
@@ -1070,8 +1070,8 @@ NEGATIVE PROMPT: ${s.negativePrompt}
                       >
                         <span className="inline-flex items-center px-3 py-1 rounded-lg bg-epic-yellow/10 text-epic-purple font-bold text-sm min-w-[60px] justify-center">{script.word}</span>
                         {(() => {
-                          const wc = wordCount(script.script);
-                          return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${wc > 400 ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{wc}w</span>;
+                          const cc = script.script.length;
+                          return <span className={`text-xs font-mono px-2 py-0.5 rounded-md ${cc > 2000 ? "bg-red-100 text-red-600" : "bg-emerald-50 text-emerald-600"}`}>{cc.toLocaleString()}c</span>;
                         })()}
                         <span className="text-sm text-epic-purple/40 truncate flex-1">{script.script.slice(0, 80)}...</span>
                         <div className="flex items-center gap-2 flex-shrink-0">

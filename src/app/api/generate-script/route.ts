@@ -79,6 +79,7 @@ STRICT RULES:
 - Include specific SOUND EFFECTS (whoosh, boing, slide-whistle, etc.)
 - The PROP must be a specific, colorful, fun object that relates to the word — not generic.
 - The NARRATOR lines must be playful and kid-friendly, with a fun closing pun or wordplay.
+- CRITICAL: The "script" field MUST be under 1800 characters total. Seedance has a 2000 character limit. Be concise — no filler, no redundant descriptions.
 
 NARRATOR LINES (offscreen only):
 - Line 1 (0s): "Today's word of the day is... ${word}!"
@@ -90,7 +91,7 @@ Return ONLY valid JSON in this exact format:
   "word": "${word}",
   "setting": "Lavender Dojo",
   "background": "${STANDARD_BACKGROUND}",
-  "script": "The complete animation prompt as a single continuous paragraph. Be SPECIFIC about props, movements, sounds, and choreography. Under 400 words.",
+  "script": "The complete animation prompt as a single continuous paragraph. STRICT LIMIT: under 1800 characters (Seedance max is 2000). Be specific but concise — cut filler words.",
   "narratorLines": [
     {"time": "0s", "line": "Today's word of the day is... ${word}!"},
     {"time": "~6s", "line": "..."},
@@ -144,6 +145,15 @@ Return ONLY valid JSON in this exact format:
           negativePrompt: NEGATIVE_PROMPT_BASE,
         };
       }
+    }
+
+    // Warn if script exceeds Seedance limit (2000 chars)
+    if (script.script && script.script.length > 2000) {
+      console.warn(`Script for "${word}" is ${script.script.length} chars (over 2000 limit)`);
+      // Truncate at the last sentence boundary before 1950 chars
+      const truncated = script.script.substring(0, 1950);
+      const lastPeriod = truncated.lastIndexOf('.');
+      script.script = lastPeriod > 1500 ? truncated.substring(0, lastPeriod + 1) : truncated;
     }
 
     // Force the negative prompt to always include our safeguard base
